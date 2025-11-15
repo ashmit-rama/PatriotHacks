@@ -2,6 +2,7 @@ import os
 import io
 import json
 import zipfile
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException
@@ -46,6 +47,17 @@ class FrameworkResponse(BaseModel):
     backend_services: List[str]
     web3_integration: List[str]
     next_steps: List[str]
+
+
+class ContactRequest(BaseModel):
+    name: str
+    email: str
+    message: str
+
+
+class ContactResponse(BaseModel):
+    status: str
+    detail: str
 
 
 # ---------- Helpers ----------
@@ -239,6 +251,38 @@ async def generate_project_zip(payload: IdeaRequest):
         content=zip_bytes,
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/api/contact", response_model=ContactResponse)
+async def submit_contact(payload: ContactRequest):
+    name = payload.name.strip()
+    email = payload.email.strip()
+    message = payload.message.strip()
+
+    if not name or not email or not message:
+        raise HTTPException(
+            status_code=400,
+            detail="Name, email, and message are all required.",
+        )
+
+    if "@" not in email or "." not in email.split("@")[-1]:
+        raise HTTPException(
+            status_code=400,
+            detail="Please provide a valid email address.",
+        )
+
+    submission = {
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "name": name,
+        "email": email,
+        "message": message,
+    }
+    print("New contact submission:", json.dumps(submission))
+
+    return ContactResponse(
+        status="received",
+        detail="Thanks! We'll be in touch shortly.",
     )
 
 
