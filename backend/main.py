@@ -47,6 +47,7 @@ class FrameworkResponse(BaseModel):
     backend_services: List[str]
     web3_integration: List[str]
     next_steps: List[str]
+    web3_library: str  # "ethers.js" or "web3.js"
 
 
 class ContactRequest(BaseModel):
@@ -96,16 +97,40 @@ THIS EXACT schema (no extra keys, no commentary):
   "frontend_components": string[],
   "backend_services": string[],
   "web3_integration": string[],
-  "next_steps": string[]
+  "next_steps": string[],
+  "web3_library": string,
+  "rpc_provider": string,
+  "rpc_network_hint": string,
+  "env_template": string,
+  "contracts": [
+    {
+      "name": string,
+      "purpose": string,
+      "solidity": string
+    }
+  ]
 }
 
 Rules:
 - Output VALID JSON. No backticks, no markdown, no explanations.
-- "summary" is 2–4 sentences, clear and non-technical.
-- All arrays contain short bullet-style phrases, NOT long paragraphs.
-- "recommended_chain" is a single chain name (e.g. "Polygon", "Base", "Ethereum L2").
+- "summary" is 2-4 sentences, clear and non-technical.
+- Lists (arrays) should contain short bullet-style phrases, NOT paragraphs.
+- "recommended_chain" should be a single chain name (e.g. "Polygon", "Base", "Ethereum L2").
+- "web3_library" MUST be either "ethers.js" or "web3.js".
+- Choose "ethers.js" for most modern dapps, and "web3.js" only if there is a strong reason.
+- "rpc_provider" should be something like "Alchemy", "Infura", "QuickNode", or "Other".
+- "rpc_network_hint" should help the user know which network to choose, e.g. "polygon-mainnet", "base-sepolia".
+- "env_template" should be a minimal .env example, e.g.:
+
+  RPC_URL=https://...
+  PRIVATE_KEY=0x...
+
+- "contracts" should contain 1-3 core contracts.
+  - "name" is a short PascalCase identifier (e.g. "TicketNFT").
+  - "solidity" must be a complete compilable Solidity file including pragma and contract definition.
 - Tailor everything to the specific idea, stage, and industry.
 """
+
 
     user_msg = f"Idea: {idea}\nStage: {stage_text}\nIndustry: {industry_text}"
 
@@ -146,58 +171,254 @@ def build_zip_bytes(idea: str, framework: dict) -> bytes:
     """
     Build a starter project zip containing:
     - README.md with summary & components
-    - backend/main.py stub
+    - backend/main.py stub (FastAPI)
     - frontend/README.md with suggested components
-    - web3/connection.py stub with chain info
+    - web3/connection.js (ethers.js or web3.js, chosen by AI)
+    - web3/README.md with setup instructions and .env template
+    - .env.example with RPC_URL + PRIVATE_KEY
+    - contracts/*.sol (AI-generated)
+    - hardhat.config.js + scripts/deploy.js + package.json
     """
     buf = io.BytesIO()
     project_name = slugify(idea)[:40] or "web3-starter"
     chain = framework.get("recommended_chain", "Ethereum L2")
+    web3_lib = framework.get("web3_library", "ethers.js")
+    rpc_provider = framework.get("rpc_provider", "Any RPC provider (Alchemy / Infura / QuickNode)")
+    rpc_network_hint = framework.get("rpc_network_hint", chain)
+    env_template = framework.get("env_template", "RPC_URL=https://...\nPRIVATE_KEY=0xYOUR_PRIVATE_KEY_HERE\n")
+    contracts = framework.get("contracts", [])
 
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        # Top-level README
+        # ---------- Top-level README ----------
         readme = f"# {project_name}\n\n"
         readme += f"## Summary\n{framework['summary']}\n\n"
         readme += f"**Recommended chain:** {chain}\n\n"
+        readme += f"**Web3 library:** {web3_lib}\n\n"
+        readme += f"**Suggested RPC provider:** {rpc_provider}\n"
+        readme += f"**Network hint:** {rpc_network_hint}\n\n"
+
         readme += "## Frontend Components\n"
         for item in framework["frontend_components"]:
             readme += f"- {item}\n"
+
         readme += "\n## Backend Services\n"
         for item in framework["backend_services"]:
             readme += f"- {item}\n"
+
         readme += "\n## Smart Contracts\n"
-        for item in framework["smart_contracts"]:
-            readme += f"- {item}\n"
+        if contracts:
+            for c in contracts:
+                readme += f"- {c.get('name', 'UnnamedContract')}: {c.get('purpose', '').strip()}\n"
+        else:
+            for item in framework["smart_contracts"]:
+                readme += f"- {item}\n"
+
         zf.writestr("README.md", readme)
 
-        # Very small FastAPI backend stub
+        # ---------- Contracts (Solidity) ----------
+        if contracts:
+            for c in contracts:
+                name = c.get("name", "MyContract").strip() or "MyContract"
+                solidity = c.get("solidity", "").strip()
+                if not solidity:
+                    continue
+                filename = f"contracts/{name}.sol"
+                zf.writestr(filename, solidity)
+
+        # ---------- Hardhat package.json ----------
+        hardhat_package_json = {
+            "name": project_name,
+            "version": "1.0.0",
+            "private": True,
+            "scripts": {
+                "test": "npx hardhat test",
+                "compile": "npx hardhat compile",
+                "deploy": "npx hardhat run scripts/deploy.js --network custom"
+            },
+            "devDependencies": {
+                "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+                "dotenv": "^16.4.0",
+                "hardhat": "^2.22.0"
+            }
+        }
+        zf.writestr("package.json", json.dumps(hardhat_package_json, indent=2))
+
+        # ---------- Hardhat config ----------
+        hardhat_config = f"""require("dotenv").config();
+require("@nomicfoundation/hardhat-toolbox");
+
+const RPC_URL = process.env.RPC_URL || "";
+const PRIVATE_KEY = process.env.PRIVATE_KEY || "";
+
+module.exports = {{
+  solidity: "0.8.20",
+  networks: {{
+    custom: {{
+      url: RPC_URL,
+      accounts: PRIVATE_KEY ? [PRIVATE_KEY] : []
+    }}
+  }}
+}};
+"""
+        zf.writestr("hardhat.config.js", hardhat_config)
+
+        # ---------- Deploy script ----------
+        contract_names = [c.get("name", "MyContract").strip() or "MyContract" for c in contracts] or ["MyContract"]
+
+        deploy_js = """const hre = require("hardhat");
+
+async function main() {
+"""
+        for name in contract_names:
+            deploy_js += f"""  const {name} = await hre.ethers.getContractFactory("{name}");
+  const {name.lower()} = await {name}.deploy();
+  await {name.lower()}.deployed();
+  console.log("{name} deployed to:", {name.lower()}.address);
+
+"""
+        deploy_js += """}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+"""
+        zf.writestr("scripts/deploy.js", deploy_js)
+
+
+        # ---------- Backend stub (FastAPI) ----------
+        # ---------- Backend stub (FastAPI) ----------
         backend_main = """from fastapi import FastAPI
 
 app = FastAPI()
 
 @app.get("/")
 async def root():
-    return {"message": "Backend is running"}    
+    return {"message": "Backend is running"}
 """
         zf.writestr("backend/main.py", backend_main)
 
-        # Frontend stub (React info)
+        # ---------- Frontend stub ----------
         frontend_readme = "This folder is for your React frontend.\n\nSuggested components:\n"
         for comp in framework["frontend_components"]:
             frontend_readme += f"- {comp}\n"
         zf.writestr("frontend/README.md", frontend_readme)
 
-        # Web3 connection stub
-        web3_stub = f"""# Web3 connection starter
 
-# Suggested chain: {chain}
-# Use libraries like ethers.js or web3.py depending on your stack.
+        # ---------- Web3 connection: ethers.js or web3.js ----------
+        if web3_lib == "web3.js":
+            connection_js = f"""// Web3 connection using web3.js
+// Chain: {chain}
+// 1. Install: npm install web3
+// 2. Set NEXT_PUBLIC_RPC_URL (or VITE_RPC_URL) in your env.
 
-RPC_URL = "<your RPC URL here>"
-CHAIN_NAME = "{chain}"
+import Web3 from "web3";
+
+const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "<YOUR_RPC_URL_HERE>";
+
+if (!RPC_URL) {{
+  console.warn("RPC_URL is not set. Add NEXT_PUBLIC_RPC_URL or VITE_RPC_URL in your env.");
+}}
+
+const web3 = new Web3(RPC_URL);
+
+// TODO: replace with your deployed contract address + ABI
+const CONTRACT_ADDRESS = "<DEPLOYED_CONTRACT_ADDRESS>";
+const CONTRACT_ABI = [
+  // add your ABI items here
+];
+
+export function getWeb3() {{
+  if (!RPC_URL) {{
+    throw new Error("RPC_URL is not set. Add NEXT_PUBLIC_RPC_URL in your env.");
+  }}
+  return web3;
+}}
+
+export function getReadOnlyContract() {{
+  return new web3.eth.Contract(CONTRACT_ABI, CONTRACT_ADDRESS);
+}}
 """
-        zf.writestr("web3/connection.py", web3_stub)
+        else:
+            # default to ethers.js
+            connection_js = f"""// Web3 connection using ethers.js
+// Chain: {chain}
+// 1. Install: npm install ethers
+// 2. Set NEXT_PUBLIC_RPC_URL (or VITE_RPC_URL) in your env.
 
+import {{ ethers }} from "ethers";
+
+const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "<YOUR_RPC_URL_HERE>";
+
+if (!RPC_URL) {{
+  console.warn("RPC_URL is not set. Add NEXT_PUBLIC_RPC_URL or VITE_RPC_URL in your env.");
+}}
+
+export function getProvider() {{
+  if (!RPC_URL) {{
+    throw new Error("RPC_URL is not set. Add NEXT_PUBLIC_RPC_URL in your env.");
+  }}
+  return new ethers.JsonRpcProvider(RPC_URL);
+}}
+
+// TODO: replace with your deployed contract address + ABI
+const CONTRACT_ADDRESS = "<DEPLOYED_CONTRACT_ADDRESS>";
+const CONTRACT_ABI = [
+  // add your ABI items here
+];
+
+export function getReadOnlyContract() {{
+  const provider = getProvider();
+  return new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
+}}
+"""
+
+        zf.writestr("web3/connection.js", connection_js)
+
+                # ---------- .env.example ----------
+        zf.writestr(".env.example", env_template)
+
+        # ---------- Web3 README ----------
+        web3_readme = f"""# Web3 Setup
+
+Recommended chain: **{chain}**  
+Chosen library: **{web3_lib}**  
+Suggested RPC provider: **{rpc_provider}**  
+Network hint: **{rpc_network_hint}**
+
+## 1. Create an RPC URL
+
+Use a provider like {rpc_provider} and create an RPC URL for the network:
+
+  {rpc_network_hint}
+
+## 2. Environment variables
+
+Copy `.env.example` to `.env` and fill in the real values:
+
+{env_template}
+
+For Next.js, expose the RPC URL to the client as `NEXT_PUBLIC_RPC_URL`.
+For Vite, use `VITE_RPC_URL`.
+
+## 3. Install Web3 library
+
+In your frontend folder, run:
+
+  npm install {"ethers" if web3_lib == "ethers.js" else "web3"}
+
+## 4. Using the helper
+
+Example (React):
+
+```js
+import {{ getReadOnlyContract }} from "../web3/connection";
+
+const contract = getReadOnlyContract();
+"""
+
+        zf.writestr("web3/README.md", web3_readme)
+    
     buf.seek(0)
     return buf.getvalue()
 
@@ -230,7 +451,9 @@ async def generate_framework(payload: IdeaRequest):
         backend_services=framework_data["backend_services"],
         web3_integration=framework_data["web3_integration"],
         next_steps=framework_data["next_steps"],
+        web3_library=framework_data["web3_library"],
     )
+
 
 
 @app.post("/api/generate-project-zip")
