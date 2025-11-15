@@ -1,0 +1,40 @@
+.final-cta-section {
+  padding: 6rem 2rem;
+  text-align: center;
+}
+
+.final-cta-container {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.final-cta-title {
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 600;
+  color: #f0f6fc;
+  margin-bottom: 2rem;
+  letter-spacing: -0.02em;
+}
+
+.final-cta-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* Light mode */
+[data-theme="light"] .final-cta-title {
+  color: #0d1117;
+}
+
+@media (max-width: 768px) {
+  .final-cta-section {
+    padding: 4rem 1.5rem;
+  }
+  
+  .final-cta-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

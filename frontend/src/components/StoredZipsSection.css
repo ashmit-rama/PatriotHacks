@@ -1,0 +1,25 @@
+.stored-zips-section {
+  padding: 3rem 2rem;
+  min-height: calc(100vh - 60px);
+}
+
+.stored-zips-container {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.stored-zips-empty {
+  text-align: center;
+  color: #8b949e;
+}
+
+/* Light mode */
+[data-theme="light"] .stored-zips-empty {
+  color: #374151;
+}
+
+@media (max-width: 768px) {
+  .stored-zips-section {
+    padding: 2rem 1.5rem;
+  }
+}

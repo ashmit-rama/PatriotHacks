@@ -1,0 +1,55 @@
+.app {
+  min-height: 100vh;
+  position: relative;
+  color: var(--text);
+  overflow-x: hidden;
+  background: var(--bg);
+  transition: background-color 300ms ease, color 300ms ease;
+}
+
+.app-main {
+  position: relative;
+  z-index: 1;
+}
+
+/* Container */
+.container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 2rem;
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 0 1.5rem;
+  }
+}
+
+/* Link styling */
+a {
+  text-decoration: none;
+  color: inherit;
+  transition: color 200ms ease;
+}
+
+a:hover {
+  color: var(--accent);
+}
+
+/* Input/Select/Textarea base styles */
+input,
+textarea,
+select {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-muted);
+}
+
+select option {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
