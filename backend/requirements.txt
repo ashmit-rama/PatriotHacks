@@ -4,6 +4,10 @@ pydantic[email]
 email-validator
 httpx
 openai
+web3
+py-solc-x
+json-repair
+python-dotenv
 python-dotenv
 supabase
 websockets
