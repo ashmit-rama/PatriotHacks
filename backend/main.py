@@ -25,8 +25,12 @@ app.add_middleware(
 
 # ---------- OpenAI client ----------
 
-client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"))  # comes from docker-compose.yml
+openai_api_key = os.getenv("OPENAI_API_KEY")
+if not openai_api_key:
+    print("WARNING: OPENAI_API_KEY environment variable is not set!")
+    print("Please set it with: $env:OPENAI_API_KEY='your-key-here' (PowerShell)")
+
+client = OpenAI(api_key=openai_api_key) if openai_api_key else None
 
 
 # ---------- Pydantic models ----------
@@ -275,9 +279,20 @@ Rules:
 
     user_msg = f"Idea: {idea}\nStage: {stage_text}\nIndustry: {industry_text}"
 
+    if not client:
+        raise HTTPException(
+            status_code=500,
+            detail="OpenAI API key is not configured. Please set OPENAI_API_KEY environment variable.",
+        )
+
+    # Debug: Check if API key is set and formatted correctly
+    api_key_preview = openai_api_key[:7] + "..." if openai_api_key and len(openai_api_key) > 7 else "NOT SET"
+    print(f"[DEBUG] Attempting OpenAI call with API key: {api_key_preview}")
+    print(f"[DEBUG] Model: gpt-5.1")
+
     try:
         completion = client.chat.completions.create(
-            model="gpt-5.1",   # 👈 you can change this if you want
+            model="gpt-5.1",
             messages=[
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": user_msg},
@@ -301,10 +316,39 @@ Rules:
         return data
 
     except Exception as e:
-        print("OpenAI error:", repr(e))
+        error_type = type(e).__name__
+        error_msg = str(e)
+        error_full = repr(e)
+        
+        print(f"[ERROR] OpenAI error type: {error_type}")
+        print(f"[ERROR] OpenAI error message: {error_msg}")
+        print(f"[ERROR] Full error details: {error_full}")
+        
+        # Check API key format
+        if openai_api_key:
+            if not openai_api_key.startswith("sk-"):
+                print(f"[WARNING] API key doesn't start with 'sk-' - may be invalid format")
+            if len(openai_api_key) < 20:
+                print(f"[WARNING] API key seems too short ({len(openai_api_key)} chars)")
+        
+        # Diagnose connection errors
+        if "Connection" in error_type or "connection" in error_msg.lower():
+            if not openai_api_key:
+                detail = "OpenAI API key is not set. Please set OPENAI_API_KEY environment variable."
+            elif not openai_api_key.startswith("sk-"):
+                detail = "API key format appears invalid (should start with 'sk-'). Check your OPENAI_API_KEY."
+            else:
+                detail = f"Connection error: {error_msg}. Possible causes: 1) Network/firewall blocking OpenAI, 2) Invalid API key, 3) OpenAI service issue"
+        elif "Authentication" in error_type or "authentication" in error_msg.lower() or "401" in error_msg:
+            detail = f"Authentication failed. Your API key may be invalid or expired: {error_msg}"
+        elif "RateLimit" in error_type or "rate" in error_msg.lower():
+            detail = f"Rate limit exceeded: {error_msg}"
+        else:
+            detail = f"Failed to generate framework with AI: {error_msg}"
+            
         raise HTTPException(
             status_code=400,
-            detail=f"Failed to generate framework with AI: {e}",
+            detail=detail,
         )
 
 
