@@ -593,9 +593,8 @@ async def generate_framework(payload: IdeaRequest):
         backend_services=framework_data["backend_services"],
         web3_integration=framework_data["web3_integration"],
         next_steps=framework_data["next_steps"],
-        web3_library=framework_data.get("web3_library"),
         tokenomics=tokenomics_data,
-        web3_library=framework_data["web3_library"],
+        web3_library=framework_data.get("web3_library", "ethers.js"),
     )
 
 
