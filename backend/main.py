@@ -5,6 +5,8 @@ import base64
 import zipfile
 import uuid
 from datetime import datetime
+from pathlib import Path
+from threading import Lock
 from typing import List, Optional, Dict, Any, Tuple
 
 import httpx
@@ -179,6 +181,125 @@ class ProjectListItem(BaseModel):
     created_at: str
     summary: str  # from framework.summary
 
+
+# ---------- Local fallback storage for projects ----------
+
+PROJECTS_CACHE_PATH = Path(__file__).resolve().parent / "data" / "projects.json"
+SUPABASE_SETUP_DOC = Path(__file__).resolve().parents[1] / "SUPABASE_SETUP.md"
+_projects_lock = Lock()
+_missing_table_warning_emitted = False
+
+
+def _ensure_projects_file() -> None:
+    PROJECTS_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if not PROJECTS_CACHE_PATH.exists():
+        PROJECTS_CACHE_PATH.write_text("{}", encoding="utf-8")
+
+
+def _read_local_projects() -> Dict[str, List[Dict[str, Any]]]:
+    _ensure_projects_file()
+    try:
+        with PROJECTS_CACHE_PATH.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+            return data if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _write_local_projects(data: Dict[str, List[Dict[str, Any]]]) -> None:
+    _ensure_projects_file()
+    with PROJECTS_CACHE_PATH.open("w", encoding="utf-8") as handle:
+        json.dump(data, handle, indent=2)
+
+
+def _log_missing_projects_table_warning() -> None:
+    global _missing_table_warning_emitted
+    if _missing_table_warning_emitted:
+        return
+    _missing_table_warning_emitted = True
+    doc_hint = SUPABASE_SETUP_DOC.name if SUPABASE_SETUP_DOC.exists() else "SUPABASE_SETUP.md"
+    print("⚠️  Supabase projects table not found. Falling back to local file storage.")
+    print(f"   Run the SQL in {doc_hint} to enable persistent storage in Supabase.")
+
+
+def _is_projects_table_missing_error(error: Exception) -> bool:
+    message = str(error).lower()
+    return (
+        "could not find the table 'public.projects'" in message
+        or "relation \"projects\" does not exist" in message
+        or "pgrst205" in message
+    )
+
+
+def _save_project_locally(record: Dict[str, Any]) -> Dict[str, Any]:
+    with _projects_lock:
+        data = _read_local_projects()
+        user_projects = data.get(record["user_id"], [])
+        user_projects = [proj for proj in user_projects if proj.get("id") != record["id"]]
+        user_projects.insert(0, record)
+        data[record["user_id"]] = user_projects
+        _write_local_projects(data)
+    return record
+
+
+def _list_local_projects(user_id: str) -> List[Dict[str, Any]]:
+    with _projects_lock:
+        data = _read_local_projects()
+        return list(data.get(user_id, []))
+
+
+def _get_local_project(user_id: str, project_id: str) -> Optional[Dict[str, Any]]:
+    with _projects_lock:
+        data = _read_local_projects()
+        for record in data.get(user_id, []):
+            if record.get("id") == project_id:
+                return record
+    return None
+
+
+def _delete_local_project(user_id: str, project_id: str) -> bool:
+    with _projects_lock:
+        data = _read_local_projects()
+        user_projects = data.get(user_id, [])
+        new_projects = [proj for proj in user_projects if proj.get("id") != project_id]
+        if len(new_projects) == len(user_projects):
+            return False
+        data[user_id] = new_projects
+        _write_local_projects(data)
+    return True
+
+
+def _dict_to_project_response(record: Dict[str, Any]) -> ProjectResponse:
+    framework_dict = record.get("framework", {})
+    framework = framework_dict if isinstance(framework_dict, FrameworkResponse) else FrameworkResponse(**framework_dict)
+    return ProjectResponse(
+        id=record["id"],
+        name=record["name"],
+        idea=record["idea"],
+        stage=record["stage"],
+        industry=record.get("industry"),
+        framework=framework,
+        tokenomics=record.get("tokenomics"),
+        created_at=record["created_at"],
+    )
+
+
+def _dict_to_project_list_item(record: Dict[str, Any]) -> ProjectListItem:
+    framework_data = record.get("framework", {})
+    summary = (
+        framework_data.summary
+        if isinstance(framework_data, FrameworkResponse)
+        else framework_data.get("summary", "")
+    )
+    return ProjectListItem(
+        id=record["id"],
+        name=record["name"],
+        idea=record["idea"],
+        stage=record["stage"],
+        industry=record.get("industry"),
+        created_at=record["created_at"],
+        summary=summary,
+    )
 
 # ---------- Project storage is now in Supabase ----------
 
@@ -1041,9 +1162,6 @@ def create_project(
     Create a new saved project from a build result.
     Requires user_id in request body (from frontend Supabase auth session).
     """
-    if not supabase_db_client:
-        raise HTTPException(status_code=503, detail="Project storage not configured")
-    
     if not project_data.user_id or not project_data.user_id.strip():
         raise HTTPException(status_code=400, detail="user_id is required")
     
@@ -1058,42 +1176,41 @@ def create_project(
     project_id = str(uuid.uuid4())
     created_at = datetime.utcnow().isoformat() + "Z"
     
-    # Insert into Supabase projects table
-    try:
-        result = supabase_db_client.table("projects").insert({
-            "id": project_id,
-            "user_id": user_id,
-            "name": project_data.name,
-            "idea": project_data.idea,
-            "stage": project_data.stage,
-            "industry": project_data.industry,
-            "framework": project_data.framework.dict(),
-            "tokenomics": project_data.tokenomics,
-            "created_at": created_at,
-        }).execute()
-        
-        # Supabase returns the inserted row(s) in result.data
-        inserted_data = result.data[0] if result.data else None
-        if not inserted_data:
-            raise HTTPException(status_code=500, detail="Failed to save project")
-        
-        # Reconstruct FrameworkResponse from stored JSONB
-        framework_dict = inserted_data.get("framework", {})
-        framework = FrameworkResponse(**framework_dict)
-        
-        return ProjectResponse(
-            id=inserted_data["id"],
-            name=inserted_data["name"],
-            idea=inserted_data["idea"],
-            stage=inserted_data["stage"],
-            industry=inserted_data.get("industry"),
-            framework=framework,
-            tokenomics=inserted_data.get("tokenomics"),
-            created_at=inserted_data["created_at"],
-        )
-    except Exception as e:
-        print(f"Error saving project to Supabase: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to save project: {str(e)}")
+    record = {
+        "id": project_id,
+        "user_id": user_id,
+        "name": project_data.name,
+        "idea": project_data.idea,
+        "stage": project_data.stage,
+        "industry": project_data.industry,
+        "framework": project_data.framework.dict(),
+        "tokenomics": project_data.tokenomics,
+        "created_at": created_at,
+    }
+
+    if supabase_db_client:
+        try:
+            result = (
+                supabase_db_client
+                .table("projects")
+                .insert(record)
+                .execute()
+            )
+            inserted_data = result.data[0] if result.data else None
+            if not inserted_data:
+                raise HTTPException(status_code=500, detail="Failed to save project")
+            return _dict_to_project_response(inserted_data)
+        except Exception as e:
+            if _is_projects_table_missing_error(e):
+                _log_missing_projects_table_warning()
+                saved_record = _save_project_locally(record)
+                return _dict_to_project_response(saved_record)
+            print(f"Error saving project to Supabase: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to save project: {str(e)}")
+
+    _log_missing_projects_table_warning()
+    saved_record = _save_project_locally(record)
+    return _dict_to_project_response(saved_record)
 
 
 @app.get("/api/projects", response_model=List[ProjectListItem])
@@ -1102,40 +1219,34 @@ def list_projects(authorization: Optional[str] = Header(default=None)) -> List[P
     Get a list of all saved projects for the authenticated user.
     Filters by user_id from JWT token or query param.
     """
-    if not supabase_db_client:
-        raise HTTPException(status_code=503, detail="Project storage not configured")
-    
     # Get user_id from token
     user_id = get_user_id_from_token(authorization)
     
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required. Please provide a valid Authorization token.")
     
-    try:
-        # Query Supabase for projects belonging to this user
-        result = supabase_db_client.table("projects").select(
-            "id,name,idea,stage,industry,created_at,framework"
-        ).eq("user_id", user_id).order("created_at", desc=True).execute()
-        
-        projects = []
-        for row in result.data:
-            framework_data = row.get("framework", {})
-            projects.append(
-                ProjectListItem(
-                    id=row["id"],
-                    name=row["name"],
-                    idea=row["idea"],
-                    stage=row["stage"],
-                    industry=row.get("industry"),
-                    created_at=row["created_at"],
-                    summary=framework_data.get("summary", "") if isinstance(framework_data, dict) else "",
-                )
+    if supabase_db_client:
+        try:
+            result = (
+                supabase_db_client
+                .table("projects")
+                .select("id,name,idea,stage,industry,created_at,framework")
+                .eq("user_id", user_id)
+                .order("created_at", desc=True)
+                .execute()
             )
-        
-        return projects
-    except Exception as e:
-        print(f"Error fetching projects from Supabase: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch projects: {str(e)}")
+            return [_dict_to_project_list_item(row) for row in result.data]
+        except Exception as e:
+            if _is_projects_table_missing_error(e):
+                _log_missing_projects_table_warning()
+            else:
+                print(f"Error fetching projects from Supabase: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to fetch projects: {str(e)}")
+    else:
+        _log_missing_projects_table_warning()
+    
+    local_projects = _list_local_projects(user_id)
+    return [_dict_to_project_list_item(record) for record in local_projects]
 
 
 @app.get("/api/projects/{project_id}", response_model=ProjectResponse)
@@ -1147,43 +1258,39 @@ def get_project(
     Get a single project by ID (full project data for loading into build page).
     Only returns projects belonging to the authenticated user.
     """
-    if not supabase_db_client:
-        raise HTTPException(status_code=503, detail="Project storage not configured")
-    
     # Get user_id from token
     user_id = get_user_id_from_token(authorization)
     
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required. Please provide a valid Authorization token.")
-    
-    try:
-        # Query Supabase - ensure project belongs to user
-        result = supabase_db_client.table("projects").select("*").eq("id", project_id).eq("user_id", user_id).execute()
-        
-        if not result.data or len(result.data) == 0:
+    if supabase_db_client:
+        try:
+            result = (
+                supabase_db_client
+                .table("projects")
+                .select("*")
+                .eq("id", project_id)
+                .eq("user_id", user_id)
+                .execute()
+            )
+            if result.data:
+                return _dict_to_project_response(result.data[0])
             raise HTTPException(status_code=404, detail="Project not found")
-        
-        project_data = result.data[0]
-        
-        # Reconstruct FrameworkResponse from stored JSONB
-        framework_dict = project_data.get("framework", {})
-        framework = FrameworkResponse(**framework_dict)
-        
-        return ProjectResponse(
-            id=project_data["id"],
-            name=project_data["name"],
-            idea=project_data["idea"],
-            stage=project_data["stage"],
-            industry=project_data.get("industry"),
-            framework=framework,
-            tokenomics=project_data.get("tokenomics"),
-            created_at=project_data["created_at"],
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error fetching project from Supabase: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch project: {str(e)}")
+        except HTTPException:
+            raise
+        except Exception as e:
+            if _is_projects_table_missing_error(e):
+                _log_missing_projects_table_warning()
+            else:
+                print(f"Error fetching project from Supabase: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to fetch project: {str(e)}")
+    else:
+        _log_missing_projects_table_warning()
+
+    record = _get_local_project(user_id, project_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return _dict_to_project_response(record)
 
 
 @app.delete("/api/projects/{project_id}")
@@ -1195,31 +1302,40 @@ def delete_project(
     Delete a project by ID.
     Only allows deletion of projects belonging to the authenticated user.
     """
-    if not supabase_db_client:
-        raise HTTPException(status_code=503, detail="Project storage not configured")
-    
     # Get user_id from token
     user_id = get_user_id_from_token(authorization)
     
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required. Please provide a valid Authorization token.")
-    
-    try:
-        # Verify project exists and belongs to user before deleting
-        check_result = supabase_db_client.table("projects").select("id").eq("id", project_id).eq("user_id", user_id).execute()
-        
-        if not check_result.data or len(check_result.data) == 0:
-            raise HTTPException(status_code=404, detail="Project not found")
-        
-        # Delete from Supabase
-        supabase_db_client.table("projects").delete().eq("id", project_id).eq("user_id", user_id).execute()
-        
-        return JSONResponse({"message": "Project deleted successfully"})
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error deleting project from Supabase: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete project: {str(e)}")
+    if supabase_db_client:
+        try:
+            check_result = (
+                supabase_db_client
+                .table("projects")
+                .select("id")
+                .eq("id", project_id)
+                .eq("user_id", user_id)
+                .execute()
+            )
+            if not check_result.data:
+                raise HTTPException(status_code=404, detail="Project not found")
+            supabase_db_client.table("projects").delete().eq("id", project_id).eq("user_id", user_id).execute()
+            return JSONResponse({"message": "Project deleted successfully"})
+        except HTTPException:
+            raise
+        except Exception as e:
+            if _is_projects_table_missing_error(e):
+                _log_missing_projects_table_warning()
+            else:
+                print(f"Error deleting project from Supabase: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to delete project: {str(e)}")
+    else:
+        _log_missing_projects_table_warning()
+
+    deleted = _delete_local_project(user_id, project_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return JSONResponse({"message": "Project deleted successfully"})
 
 
 if __name__ == "__main__":

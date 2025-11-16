@@ -8,11 +8,44 @@ import Button from './ui/Button';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
+const getProjectStorageKey = (session) => {
+  const userId =
+    session?.user?.id ||
+    session?.data?.user?.id ||
+    session?.user?.user?.id ||
+    session?.user_id ||
+    null;
+  return userId ? `kairo.projects.seen.${userId}` : null;
+};
+
+const readSeenProjects = (key) => {
+  if (!key) return new Set();
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return new Set();
+    const ids = JSON.parse(raw);
+    return Array.isArray(ids) ? new Set(ids) : new Set();
+  } catch (error) {
+    console.warn('Failed to read seen projects', error);
+    return new Set();
+  }
+};
+
+const writeSeenProjects = (key, ids) => {
+  if (!key) return;
+  try {
+    localStorage.setItem(key, JSON.stringify(Array.from(ids)));
+  } catch (error) {
+    console.warn('Failed to persist seen projects', error);
+  }
+};
+
 const StoredZipsSection = ({ onProjectDeleted, session }) => {
   const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [newBadgeIds, setNewBadgeIds] = useState(() => new Set());
   
   // Fetch projects from API
   useEffect(() => {
@@ -20,12 +53,16 @@ const StoredZipsSection = ({ onProjectDeleted, session }) => {
       // Check if user is logged in
       if (!session?.access_token) {
         setError('Please log in to view your projects');
+        setProjects([]);
+        setNewBadgeIds(new Set());
         setLoading(false);
         return;
       }
-      
+
       try {
         setLoading(true);
+        const storageKey = getProjectStorageKey(session);
+        const seenSet = readSeenProjects(storageKey);
         const res = await fetch(`${API_BASE}/api/projects`, {
           headers: {
             'Authorization': `Bearer ${session.access_token}`,
@@ -37,6 +74,20 @@ const StoredZipsSection = ({ onProjectDeleted, session }) => {
         }
         const data = await res.json();
         setProjects(data);
+
+        const newIds = [];
+        data.forEach((project) => {
+          if (!seenSet.has(project.id)) {
+            newIds.push(project.id);
+          }
+        });
+        setNewBadgeIds(new Set(newIds));
+
+        if (data.length) {
+          const updatedSeen = new Set(seenSet);
+          data.forEach((project) => updatedSeen.add(project.id));
+          writeSeenProjects(storageKey, updatedSeen);
+        }
       } catch (err) {
         console.error('Failed to fetch projects:', err);
         setError(err.message || 'Failed to load projects');
@@ -116,13 +167,18 @@ const StoredZipsSection = ({ onProjectDeleted, session }) => {
           </Card>
         ) : (
           <div className="stored-zips-grid">
-            {projects.map((project) => (
+            {projects.map((project) => {
+              const isNew = newBadgeIds.has(project.id);
+              return (
               <Card key={project.id} padding="lg" className="stored-project-card" hover>
                 <div className="stored-project-header">
                   <h3 className="stored-project-title">{project.name || project.idea}</h3>
-                  <Badge variant="accent">
-                    {project.stage === 'existing' ? 'Existing' : 'New'}
-                  </Badge>
+                  <div className="stored-project-tags">
+                    {isNew && <span className="stored-project-new-tag">New</span>}
+                    {project.stage === 'existing' && (
+                      <Badge variant="accent">Existing</Badge>
+                    )}
+                  </div>
                 </div>
                 <p className="stored-project-idea" style={{ fontWeight: 500, marginBottom: '0.5rem' }}>
                   {project.idea}
@@ -137,7 +193,14 @@ const StoredZipsSection = ({ onProjectDeleted, session }) => {
                     </span>
                   )}
                   <span className="stored-project-date">
-                    Generated {new Date(project.createdAt).toLocaleString()}
+                    {(() => {
+                      const createdAt = project.created_at || project.createdAt;
+                      if (!createdAt) return 'Generated (date unavailable)';
+                      const parsed = new Date(createdAt);
+                      return parsed.toString() === 'Invalid Date'
+                        ? 'Generated (date unavailable)'
+                        : `Generated ${parsed.toLocaleString()}`;
+                    })()}
                   </span>
                 </div>
                 <div className="stored-project-actions">
@@ -157,7 +220,8 @@ const StoredZipsSection = ({ onProjectDeleted, session }) => {
                   </Button>
                 </div>
               </Card>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

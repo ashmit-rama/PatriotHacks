@@ -551,6 +551,14 @@ const BuildSection = ({ agentResult, setAgentResult, onProjectSaved, session }) 
 
   // ---------- JSX ----------
 
+  const layoutClasses = ['build-layout'];
+  if (hasGenerated) {
+    layoutClasses.push('build-layout-generated');
+    if (!tokenomics) {
+      layoutClasses.push('build-layout-full');
+    }
+  }
+
   return (
     <section className="build-section">
       <div className="build-container">
@@ -571,7 +579,7 @@ const BuildSection = ({ agentResult, setAgentResult, onProjectSaved, session }) 
           }
         />
 
-        <div className={`build-layout ${hasGenerated ? 'build-layout-generated' : ''}`}>
+        <div className={layoutClasses.join(' ')}>
           {/* Left: input panel OR tokenomics */}
           {!hasGenerated ? (
             <div className="build-input-panel">

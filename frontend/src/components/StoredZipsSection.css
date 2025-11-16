@@ -38,6 +38,30 @@
   gap: 0.75rem;
 }
 
+.stored-project-tags {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.stored-project-new-tag {
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background: rgba(147, 51, 234, 0.15);
+  color: #c084fc;
+  border: 1px solid rgba(147, 51, 234, 0.35);
+}
+
+[data-theme="light"] .stored-project-new-tag {
+  background: rgba(147, 51, 234, 0.1);
+  color: #9333ea;
+  border-color: rgba(147, 51, 234, 0.4);
+}
+
 .stored-project-title {
   margin: 0;
   font-size: 1.1rem;
