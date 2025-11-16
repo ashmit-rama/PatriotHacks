@@ -5,8 +5,15 @@ services:
     build: ./backend
     ports:
       - "8000:8000"
+    env_file:
+      - .env  # Load from .env file if it exists (doesn't fail if missing)
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-}
+      - SUPABASE_EMAIL_REDIRECT_URL=${SUPABASE_EMAIL_REDIRECT_URL:-http://localhost:3000}
+      - SUPABASE_RESET_REDIRECT_URL=${SUPABASE_RESET_REDIRECT_URL:-http://localhost:3000/reset-password}
     volumes:
       - ./backend:/app
     restart: always

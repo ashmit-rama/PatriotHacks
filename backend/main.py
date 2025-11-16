@@ -3,16 +3,42 @@ import io
 import json
 import base64
 import zipfile
+import uuid
+from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple
 
 import httpx
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
 
 from openai import OpenAI
 
-from supabase_client import supabase_client, SUPABASE_URL, SUPABASE_ANON_KEY
+try:
+    from supabase_client import supabase_client, supabase_db_client, SUPABASE_URL, SUPABASE_ANON_KEY
+    # Log status for debugging
+    if not supabase_client:
+        print("⚠️  Supabase client is None - authentication endpoints will be disabled")
+        print(f"   SUPABASE_URL is {'set' if SUPABASE_URL else 'NOT set'}")
+        print(f"   SUPABASE_ANON_KEY is {'set' if SUPABASE_ANON_KEY else 'NOT set'}")
+    else:
+        print("✅ Supabase client initialized successfully")
+    
+    if not supabase_db_client:
+        print("⚠️  Supabase DB client is None - project storage will be disabled")
+        print("   SUPABASE_SERVICE_ROLE_KEY is NOT set (needed for project storage)")
+    else:
+        print("✅ Supabase DB client initialized successfully")
+except Exception as e:
+    # Fallback if supabase_client import fails or env vars are missing
+    print(f"⚠️  Failed to import supabase_client: {e}")
+    print("   Authentication endpoints will be disabled")
+    supabase_client = None
+    supabase_db_client = None
+    SUPABASE_URL = None
+    SUPABASE_ANON_KEY = None
+
 
 # ---------- FastAPI setup ----------
 
@@ -33,6 +59,23 @@ DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.1")
 
 SUPABASE_EMAIL_REDIRECT_URL = os.getenv("SUPABASE_EMAIL_REDIRECT_URL", "http://localhost:3000")
 SUPABASE_RESET_REDIRECT_URL = os.getenv("SUPABASE_RESET_REDIRECT_URL", f"{SUPABASE_EMAIL_REDIRECT_URL.rstrip('/')}/reset-password")
+
+
+# ---------- Auth helper functions ----------
+
+def normalize_email(email: str) -> str:
+    """Normalize email to lowercase and strip whitespace."""
+    return email.strip().lower()
+
+
+def supabase_logout(access_token: str) -> None:
+    """Revoke a Supabase session using the access token."""
+    if not supabase_client:
+        return
+    try:
+        supabase_client.auth.sign_out()
+    except Exception:
+        pass
 
 
 # ---------- Pydantic models ----------
@@ -77,6 +120,85 @@ class MultiAgentResult(BaseModel):
 class ZipResponse(BaseModel):
     zip_base64: str
     security_report: Optional[Dict[str, Any]] = None
+
+
+# ---------- Auth Pydantic models ----------
+
+class SignupRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    access_token: str
+    new_password: str
+
+
+class LogoutRequest(BaseModel):
+    access_token: str
+
+
+# ---------- Project models ----------
+
+class ProjectCreateRequest(BaseModel):
+    user_id: str  # User ID from Supabase auth
+    name: str
+    idea: str
+    stage: str
+    industry: Optional[str] = None
+    framework: FrameworkResponse
+    tokenomics: Optional[Dict[str, Any]] = None  # Tokenomics data from build
+
+
+class ProjectResponse(BaseModel):
+    id: str
+    name: str
+    idea: str
+    stage: str
+    industry: Optional[str] = None
+    framework: FrameworkResponse
+    tokenomics: Optional[Dict[str, Any]] = None
+    created_at: str
+
+
+class ProjectListItem(BaseModel):
+    id: str
+    name: str
+    idea: str
+    stage: str
+    industry: Optional[str] = None
+    created_at: str
+    summary: str  # from framework.summary
+
+
+# ---------- Project storage is now in Supabase ----------
+
+def get_user_id_from_token(authorization: Optional[str] = None) -> Optional[str]:
+    """
+    Extract user_id from Supabase JWT token in Authorization header.
+    Returns None if token is invalid or missing.
+    """
+    if not supabase_client:
+        return None
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None
+    
+    token = authorization.split(" ", 1)[1]
+    try:
+        response = supabase_client.auth.get_user(token)
+        user = getattr(response, "user", None)
+        return user.id if user else None
+    except Exception:
+        return None
 
 
 # ---------- OpenAI helper ----------
@@ -233,7 +355,7 @@ def run_framework_pipeline(idea_req: IdeaRequest) -> Tuple[FrameworkResponse, Li
 
     # 1) Product Planner Agent
     planner_output = run_agent(
-        name="Product P lanner",
+        name="Product Planner",
         description=(
             "Turn the raw idea into a clear product concept with target users, "
             "problems, value propositions, and success metrics."
@@ -741,9 +863,9 @@ def generate_zip(zip_req: ZipRequest) -> ZipResponse:
     zip_bytes = build_repo_zip(framework, code_output, minimal_report)
     zip_b64 = base64.b64encode(zip_bytes).decode("utf-8")
 
-    return ContactResponse(
-        status="received",
-        detail="Thanks! We'll be in touch shortly.",
+    return ZipResponse(
+        zip_base64=zip_b64,
+        security_report=security_output
     )
 
 
@@ -753,6 +875,8 @@ def generate_zip(zip_req: ZipRequest) -> ZipResponse:
 @app.post("/auth/signup", status_code=201)
 async def auth_signup(payload: SignupRequest):
     """Create a Supabase Auth user and trigger the confirmation email."""
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Authentication service not configured")
     email = normalize_email(payload.email)
 
     try:
@@ -787,6 +911,8 @@ async def auth_signup(payload: SignupRequest):
 @app.post("/auth/login")
 async def auth_login(payload: LoginRequest):
     """Authenticate a confirmed user via Supabase email/password login."""
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Authentication service not configured")
     email = normalize_email(payload.email)
     try:
         response = supabase_client.auth.sign_in_with_password(
@@ -825,6 +951,8 @@ async def auth_login(payload: LoginRequest):
 @app.post("/auth/forgot-password")
 async def forgot_password(payload: ForgotPasswordRequest):
     """Send a Supabase password reset email for the supplied address."""
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Authentication service not configured")
     email = normalize_email(payload.email)
     try:
         supabase_client.auth.reset_password_for_email(
@@ -841,6 +969,8 @@ async def forgot_password(payload: ForgotPasswordRequest):
 @app.post("/auth/reset-password")
 async def reset_password(payload: ResetPasswordRequest):
     """Finalize a Supabase password reset using the access token from the email."""
+    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+        raise HTTPException(status_code=503, detail="Authentication service not configured")
     url = f"{SUPABASE_URL.rstrip('/')}/auth/v1/user"
     headers = {
         "apikey": SUPABASE_ANON_KEY,
@@ -867,6 +997,8 @@ async def reset_password(payload: ResetPasswordRequest):
 @app.get("/auth/me")
 async def auth_me(authorization: Optional[str] = Header(default=None)):
     """Return the Supabase user associated with the provided bearer token."""
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Authentication service not configured")
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Missing Authorization header")
 
@@ -892,15 +1024,205 @@ async def auth_me(authorization: Optional[str] = Header(default=None)):
 @app.post("/auth/logout")
 async def auth_logout(payload: LogoutRequest):
     """Revoke the current Supabase session using the provided access token."""
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Authentication service not configured")
     supabase_logout(payload.access_token)
     return JSONResponse({"message": "Logged out successfully."})
+
+
+# ---------- Project endpoints ----------
+
+@app.post("/api/projects", response_model=ProjectResponse, status_code=201)
+def create_project(
+    project_data: ProjectCreateRequest,
+    authorization: Optional[str] = Header(default=None)
+) -> ProjectResponse:
+    """
+    Create a new saved project from a build result.
+    Requires user_id in request body (from frontend Supabase auth session).
+    """
+    if not supabase_db_client:
+        raise HTTPException(status_code=503, detail="Project storage not configured")
+    
+    if not project_data.user_id or not project_data.user_id.strip():
+        raise HTTPException(status_code=400, detail="user_id is required")
+    
+    user_id = project_data.user_id.strip()
+    
+    # Optional: verify user_id matches token (if token provided)
+    if authorization:
+        token_user_id = get_user_id_from_token(authorization)
+        if token_user_id and token_user_id != user_id:
+            raise HTTPException(status_code=403, detail="user_id does not match authenticated user")
+    
+    project_id = str(uuid.uuid4())
+    created_at = datetime.utcnow().isoformat() + "Z"
+    
+    # Insert into Supabase projects table
+    try:
+        result = supabase_db_client.table("projects").insert({
+            "id": project_id,
+            "user_id": user_id,
+            "name": project_data.name,
+            "idea": project_data.idea,
+            "stage": project_data.stage,
+            "industry": project_data.industry,
+            "framework": project_data.framework.dict(),
+            "tokenomics": project_data.tokenomics,
+            "created_at": created_at,
+        }).execute()
+        
+        # Supabase returns the inserted row(s) in result.data
+        inserted_data = result.data[0] if result.data else None
+        if not inserted_data:
+            raise HTTPException(status_code=500, detail="Failed to save project")
+        
+        # Reconstruct FrameworkResponse from stored JSONB
+        framework_dict = inserted_data.get("framework", {})
+        framework = FrameworkResponse(**framework_dict)
+        
+        return ProjectResponse(
+            id=inserted_data["id"],
+            name=inserted_data["name"],
+            idea=inserted_data["idea"],
+            stage=inserted_data["stage"],
+            industry=inserted_data.get("industry"),
+            framework=framework,
+            tokenomics=inserted_data.get("tokenomics"),
+            created_at=inserted_data["created_at"],
+        )
+    except Exception as e:
+        print(f"Error saving project to Supabase: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save project: {str(e)}")
+
+
+@app.get("/api/projects", response_model=List[ProjectListItem])
+def list_projects(authorization: Optional[str] = Header(default=None)) -> List[ProjectListItem]:
+    """
+    Get a list of all saved projects for the authenticated user.
+    Filters by user_id from JWT token or query param.
+    """
+    if not supabase_db_client:
+        raise HTTPException(status_code=503, detail="Project storage not configured")
+    
+    # Get user_id from token
+    user_id = get_user_id_from_token(authorization)
+    
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required. Please provide a valid Authorization token.")
+    
+    try:
+        # Query Supabase for projects belonging to this user
+        result = supabase_db_client.table("projects").select(
+            "id,name,idea,stage,industry,created_at,framework"
+        ).eq("user_id", user_id).order("created_at", desc=True).execute()
+        
+        projects = []
+        for row in result.data:
+            framework_data = row.get("framework", {})
+            projects.append(
+                ProjectListItem(
+                    id=row["id"],
+                    name=row["name"],
+                    idea=row["idea"],
+                    stage=row["stage"],
+                    industry=row.get("industry"),
+                    created_at=row["created_at"],
+                    summary=framework_data.get("summary", "") if isinstance(framework_data, dict) else "",
+                )
+            )
+        
+        return projects
+    except Exception as e:
+        print(f"Error fetching projects from Supabase: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch projects: {str(e)}")
+
+
+@app.get("/api/projects/{project_id}", response_model=ProjectResponse)
+def get_project(
+    project_id: str,
+    authorization: Optional[str] = Header(default=None)
+) -> ProjectResponse:
+    """
+    Get a single project by ID (full project data for loading into build page).
+    Only returns projects belonging to the authenticated user.
+    """
+    if not supabase_db_client:
+        raise HTTPException(status_code=503, detail="Project storage not configured")
+    
+    # Get user_id from token
+    user_id = get_user_id_from_token(authorization)
+    
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required. Please provide a valid Authorization token.")
+    
+    try:
+        # Query Supabase - ensure project belongs to user
+        result = supabase_db_client.table("projects").select("*").eq("id", project_id).eq("user_id", user_id).execute()
+        
+        if not result.data or len(result.data) == 0:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        project_data = result.data[0]
+        
+        # Reconstruct FrameworkResponse from stored JSONB
+        framework_dict = project_data.get("framework", {})
+        framework = FrameworkResponse(**framework_dict)
+        
+        return ProjectResponse(
+            id=project_data["id"],
+            name=project_data["name"],
+            idea=project_data["idea"],
+            stage=project_data["stage"],
+            industry=project_data.get("industry"),
+            framework=framework,
+            tokenomics=project_data.get("tokenomics"),
+            created_at=project_data["created_at"],
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error fetching project from Supabase: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch project: {str(e)}")
+
+
+@app.delete("/api/projects/{project_id}")
+def delete_project(
+    project_id: str,
+    authorization: Optional[str] = Header(default=None)
+):
+    """
+    Delete a project by ID.
+    Only allows deletion of projects belonging to the authenticated user.
+    """
+    if not supabase_db_client:
+        raise HTTPException(status_code=503, detail="Project storage not configured")
+    
+    # Get user_id from token
+    user_id = get_user_id_from_token(authorization)
+    
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required. Please provide a valid Authorization token.")
+    
+    try:
+        # Verify project exists and belongs to user before deleting
+        check_result = supabase_db_client.table("projects").select("id").eq("id", project_id).eq("user_id", user_id).execute()
+        
+        if not check_result.data or len(check_result.data) == 0:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Delete from Supabase
+        supabase_db_client.table("projects").delete().eq("id", project_id).eq("user_id", user_id).execute()
+        
+        return JSONResponse({"message": "Project deleted successfully"})
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error deleting project from Supabase: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete project: {str(e)}")
 
 
 if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
-    return ZipResponse(
-        zip_base64=zip_b64,
-        security_report=security_output
-    )

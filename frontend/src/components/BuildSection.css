@@ -490,6 +490,87 @@
   box-shadow: 0 4px 12px rgba(139, 92, 246, 0.1);
 }
 
+/* Save Project + Download buttons row */
+.build-actions-row {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-top: 1rem;
+}
+
+.save-project-button {
+  flex: 0 0 auto;
+}
+
+.download-cta-button {
+  flex: 1 1 auto;
+}
+
+@media (max-width: 640px) {
+  .build-actions-row {
+    flex-direction: column;
+  }
+  
+  .download-cta-button,
+  .save-project-button {
+    width: 100%;
+  }
+}
+
+/* Modal overlay */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.save-project-modal {
+  max-width: 500px;
+  width: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.modal-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 0.5rem 0;
+}
+
+.modal-description {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin: 0 0 1.5rem 0;
+  line-height: 1.5;
+}
+
+.modal-form {
+  width: 100%;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  margin-top: 1.5rem;
+}
+
+[data-theme="light"] .save-project-modal {
+  background: var(--bg-elevated);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
 @media (max-width: 768px) {
   .build-section {
     padding: 2rem 1.5rem;

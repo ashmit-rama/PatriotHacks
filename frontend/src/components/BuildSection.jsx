@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import './BuildSection.css';
 import Card from './ui/Card';
 import CollapsibleCard from './ui/CollapsibleCard';
 import Button from './ui/Button';
 import Badge from './ui/Badge';
 import SectionHeader from './ui/SectionHeader';
+import Input from './ui/Input';
 import { TokenomicsSection } from './TokenomicsSection';
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 // Icons for sections
 const SectionIcons = {
@@ -66,7 +68,8 @@ const SectionIcons = {
   ),
 };
 
-const BuildSection = ({ agentResult, setAgentResult }) => {
+const BuildSection = ({ agentResult, setAgentResult, onProjectSaved, session }) => {
+  const { projectId } = useParams();
   const [idea, setIdea] = useState('');
   const [stage, setStage] = useState('new');
   const [industry, setIndustry] = useState('');
@@ -76,6 +79,12 @@ const BuildSection = ({ agentResult, setAgentResult }) => {
   const [loadingZip, setLoadingZip] = useState(false);
   const [tokenomics, setTokenomics] = useState(null);
   const [hasGenerated, setHasGenerated] = useState(false);
+  
+  // Save project modal state
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [projectName, setProjectName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   // ---------- Tokenomics helpers ----------
 
@@ -107,6 +116,143 @@ const BuildSection = ({ agentResult, setAgentResult }) => {
       allocations,
       healthSummary: rawTokenomics.healthSummary || rawTokenomics.summary,
     };
+  };
+
+  // ---------- Load project from route if projectId exists ----------
+  
+  useEffect(() => {
+    if (projectId) {
+      // Load project data from API
+      const loadProject = async () => {
+        try {
+          setLoadingFramework(true);
+          
+          const headers = {};
+          // Include Authorization header if we have an access token
+          if (session?.access_token) {
+            headers['Authorization'] = `Bearer ${session.access_token}`;
+          }
+          
+          const res = await fetch(`${API_BASE}/api/projects/${projectId}`, {
+            headers: headers,
+          });
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.detail || 'Project not found');
+          }
+          const project = await res.json();
+          
+          // Pre-fill form fields
+          setIdea(project.idea);
+          setStage(project.stage);
+          setIndustry(project.industry || '');
+          
+          // Set framework and agent result
+          setFramework(project.framework);
+          
+          // Set tokenomics if available
+          if (project.tokenomics) {
+            const normalized = normalizeTokenomics(project.tokenomics);
+            setTokenomics(normalized);
+          } else {
+            setTokenomics(null);
+          }
+          
+          // Create a MultiAgentResult-like structure for agentResult
+          if (setAgentResult) {
+            setAgentResult({
+              framework: project.framework,
+              agent_traces: [], // We don't store traces, but this is okay
+              zip_base64: null,
+              tokenomics: project.tokenomics || null,
+            });
+          }
+          
+          setHasGenerated(true);
+        } catch (err) {
+          console.error('Failed to load project:', err);
+          setError(err.message || 'Failed to load project');
+        } finally {
+          setLoadingFramework(false);
+        }
+      };
+      
+      loadProject();
+    }
+  }, [projectId, setAgentResult, session]);
+
+  // ---------- Save project handler ----------
+  
+  const handleSaveProject = async () => {
+    if (!projectName.trim()) {
+      setSaveError('Project name is required');
+      return;
+    }
+    
+    if (!framework) {
+      setSaveError('No framework to save. Please generate a framework first.');
+      return;
+    }
+    
+    // Get user_id from session
+    const user_id = session?.user?.id || session?.data?.user?.id;
+    if (!user_id) {
+      setSaveError('You must be logged in to save projects. Please log in and try again.');
+      return;
+    }
+    
+    setSaving(true);
+    setSaveError('');
+    
+    try {
+      const headers = {
+        'Content-Type': 'application/json',
+      };
+      
+      // Include Authorization header if we have an access token
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+      
+      const res = await fetch(`${API_BASE}/api/projects`, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify({
+          user_id: user_id,
+          name: projectName.trim(),
+          idea: idea.trim(),
+          stage: stage,
+          industry: industry || null,
+          framework: framework,
+          tokenomics: agentResult?.tokenomics || null, // Use raw tokenomics from agentResult
+        }),
+      });
+      
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Failed to save project');
+      }
+      
+      const savedProject = await res.json();
+      
+      // Call callback if provided
+      if (onProjectSaved) {
+        onProjectSaved(savedProject);
+      }
+      
+      // Close modal and show success
+      setShowSaveModal(false);
+      setProjectName('');
+      
+      // Show success message (simple alert for now, can be upgraded to toast)
+      alert('Project saved successfully!');
+      
+    } catch (err) {
+      console.error('Failed to save project:', err);
+      setSaveError(err.message || 'Failed to save project');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const generateFallbackTokenomics = (stageValue, industryValue) => {
@@ -816,22 +962,39 @@ const BuildSection = ({ agentResult, setAgentResult }) => {
                   </Card>
                 )}
 
-                {/* Download CTA */}
+                {/* Actions: Save Project + Download */}
                 <Card className="download-cta-card" padding="lg">
                   <p className="download-cta-text">
                     Ready to build? Download the starter frontend, backend, and contracts in one zip.
                   </p>
-                  <Button
-                    type="button"
-                    onClick={handleDownloadZip}
-                    disabled={loadingZip}
-                    loading={loadingZip}
-                    variant="primary"
-                    size="lg"
-                    className="download-cta-button"
-                  >
-                    Download Starter Project (.zip)
-                  </Button>
+                  <div className="build-actions-row">
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        // Auto-fill project name from idea (first 50 chars)
+                        const defaultName = idea.trim().slice(0, 50) || 'My Web3 Project';
+                        setProjectName(defaultName);
+                        setShowSaveModal(true);
+                      }}
+                      disabled={saving}
+                      variant="secondary"
+                      size="lg"
+                      className="save-project-button"
+                    >
+                      Save Project
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={handleDownloadZip}
+                      disabled={loadingZip}
+                      loading={loadingZip}
+                      variant="primary"
+                      size="lg"
+                      className="download-cta-button"
+                    >
+                      Download Starter Project (.zip)
+                    </Button>
+                  </div>
                 </Card>
               </div>
             ) : (
@@ -846,6 +1009,63 @@ const BuildSection = ({ agentResult, setAgentResult }) => {
           </div>
         </div>
       </div>
+      
+      {/* Save Project Modal */}
+      {showSaveModal && (
+        <div className="modal-overlay" onClick={() => !saving && setShowSaveModal(false)}>
+          <Card className="save-project-modal" padding="lg" onClick={(e) => e.stopPropagation()}>
+            <h3 className="modal-title">Save Project</h3>
+            <p className="modal-description">
+              Give your project a name so you can find it later in your Projects tab.
+            </p>
+            
+            <div className="modal-form">
+              <Input
+                label="Project Name"
+                type="text"
+                value={projectName}
+                onChange={(e) => {
+                  setProjectName(e.target.value);
+                  setSaveError('');
+                }}
+                placeholder="e.g., My NFT Marketplace"
+                disabled={saving}
+                autoFocus
+              />
+              
+              {saveError && (
+                <div className="error-message" style={{ marginTop: '0.5rem' }}>
+                  {saveError}
+                </div>
+              )}
+              
+              <div className="modal-actions" style={{ marginTop: '1.5rem', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                <Button
+                  variant="ghost"
+                  size="md"
+                  onClick={() => {
+                    setShowSaveModal(false);
+                    setProjectName('');
+                    setSaveError('');
+                  }}
+                  disabled={saving}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  size="md"
+                  onClick={handleSaveProject}
+                  disabled={saving || !projectName.trim()}
+                  loading={saving}
+                >
+                  Save Project
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
     </section>
   );
 };

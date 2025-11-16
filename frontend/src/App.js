@@ -15,16 +15,11 @@ import AnimatedBackground from './components/AnimatedBackground';
 import Login from './pages/Login';
 import GetStarted from './pages/GetStarted';
 import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
+import AccountSettings from './pages/AccountSettings';
 
-function HomePage({
-  activeTab,
-  setActiveTab,
-  handleStartBuilding,
-  handleTabChange,
-  projects,
-  onProjectGenerated,
-  onProjectDeleted,
-}) {
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
 // Home page wrapper for the tabbed content
 function HomePage({
   activeTab,
@@ -33,6 +28,10 @@ function HomePage({
   handleTabChange,
   agentResult,
   setAgentResult,
+  projects,
+  onProjectGenerated,
+  onProjectDeleted,
+  session,
 }) {
   const renderContent = () => {
     switch (activeTab) {
@@ -41,12 +40,15 @@ function HomePage({
           <BuildSection
             agentResult={agentResult}
             setAgentResult={setAgentResult}
+            onProjectSaved={onProjectGenerated}
+            session={session}
           />
         );
       case 'stored-zips':
         return (
           <StoredZipsSection
-            agentResult={agentResult}
+            onProjectDeleted={onProjectDeleted}
+            session={session}
           />
         );
       case 'home':
@@ -69,8 +71,6 @@ function HomePage({
     </main>
   );
 }
-
-const API_BASE = 'http://localhost:8000';
 
 function AppRoutes() {
   const navigate = useNavigate();
@@ -131,13 +131,13 @@ function AppRoutes() {
         throw new Error('Unable to load profile');
       }
       const data = await res.json();
-      setCurrentUser(data);
+      // backend returns { data: { id, email, ... } }
+      setCurrentUser(data.data || data);
     } catch (error) {
       console.error('Failed to fetch current user', error);
       // don't clear session here
     }
   }, []);
-
 
   useEffect(() => {
     if (session?.user) {
@@ -151,19 +151,23 @@ function AppRoutes() {
     }
   }, [session, fetchCurrentUser]);
 
-  const handleAuthSuccess = useCallback((payload) => {
-    console.log('✅ handleAuthSuccess payload:', payload);
-    persistSession(payload);
-    if (payload?.user) {
-      console.log('✅ setting currentUser from payload.user:', payload.user);
-      setCurrentUser(payload.user);
-    } else if (payload?.access_token) {
-      console.log('ℹ️ no payload.user, fetching via /auth/me');
-      fetchCurrentUser(payload.access_token);
-    }
-    setActiveTab('home');
-    navigate('/');
-  }, [persistSession, navigate, fetchCurrentUser]);
+  const handleAuthSuccess = useCallback(
+    (payload) => {
+      console.log('✅ handleAuthSuccess payload:', payload);
+      // payload should be { access_token, refresh_token, user: { ... } }
+      persistSession(payload);
+      if (payload?.user) {
+        console.log('✅ setting currentUser from payload.user:', payload.user);
+        setCurrentUser(payload.user);
+      } else if (payload?.access_token) {
+        console.log('ℹ️ no payload.user, fetching via /auth/me');
+        fetchCurrentUser(payload.access_token);
+      }
+      setActiveTab('home');
+      navigate('/');
+    },
+    [persistSession, navigate, fetchCurrentUser]
+  );
 
   const handleLogout = useCallback(async () => {
     try {
@@ -279,6 +283,22 @@ function AppRoutes() {
           }
         />
         <Route
+          path="/build/:projectId"
+          element={
+            <>
+              <main className="app-main">
+                <BuildSection
+                  agentResult={agentResult}
+                  setAgentResult={setAgentResult}
+                  onProjectSaved={handleProjectSaved}
+                  session={session}
+                />
+              </main>
+              <Footer />
+            </>
+          }
+        />
+        <Route
           path="/"
           element={
             <>
@@ -292,6 +312,7 @@ function AppRoutes() {
                 projects={projects}
                 onProjectGenerated={handleProjectSaved}
                 onProjectDeleted={handleProjectDeleted}
+                session={session}
               />
               <Footer />
             </>
