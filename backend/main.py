@@ -18,7 +18,12 @@ from pydantic import BaseModel, EmailStr
 from openai import OpenAI
 
 try:
-    from supabase_client import supabase_client, supabase_db_client, SUPABASE_URL, SUPABASE_ANON_KEY
+    from .supabase_client import (
+        supabase_client,
+        supabase_db_client,
+        SUPABASE_URL,
+        SUPABASE_ANON_KEY,
+    )
     # Log status for debugging
     if not supabase_client:
         print("⚠️  Supabase client is None - authentication endpoints will be disabled")

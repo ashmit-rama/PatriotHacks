@@ -6,3 +6,4 @@ httpx
 openai
 python-dotenv
 supabase
+websockets
