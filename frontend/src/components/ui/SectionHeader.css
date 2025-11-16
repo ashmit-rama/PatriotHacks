@@ -13,6 +13,19 @@
   flex: 1;
 }
 
+.section-header-centered .section-header-content {
+  justify-content: center;
+}
+
+.section-header-centered .section-header-title-group {
+  text-align: center;
+  flex: none;
+}
+
+.section-header-centered .section-header-title {
+  justify-content: center;
+}
+
 .section-header-title {
   font-size: 1.5rem;
   font-weight: 600;

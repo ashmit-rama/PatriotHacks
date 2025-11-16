@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import './App.css';
 import Navbar from './components/Navbar';
 import HeroSection from './components/HeroSection';
@@ -10,20 +11,11 @@ import Footer from './components/Footer';
 import BuildSection from './components/BuildSection';
 import StoredZipsSection from './components/StoredZipsSection';
 import AnimatedBackground from './components/AnimatedBackground';
+import Login from './pages/Login';
+import GetStarted from './pages/GetStarted';
+import ForgotPassword from './pages/ForgotPassword';
 
-function App() {
-  const [activeTab, setActiveTab] = useState('home');
-
-  const handleStartBuilding = () => {
-    setActiveTab('build');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleTabChange = (tab) => {
-    setActiveTab(tab);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
+function HomePage({ activeTab, setActiveTab, handleStartBuilding, handleTabChange }) {
   const renderContent = () => {
     switch (activeTab) {
       case 'build':
@@ -45,14 +37,81 @@ function App() {
   };
 
   return (
-    <div className="app">
-      <AnimatedBackground />
-      <Navbar activeTab={activeTab} onTabChange={handleTabChange} />
-      <main className="app-main">
-        {renderContent()}
-      </main>
-      <Footer />
-    </div>
+    <main className="app-main">
+      {renderContent()}
+    </main>
+  );
+}
+
+function App() {
+  const [activeTab, setActiveTab] = useState('home');
+
+  const handleStartBuilding = () => {
+    setActiveTab('build');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  return (
+    <BrowserRouter>
+      <div className="app">
+        <AnimatedBackground />
+        <Navbar activeTab={activeTab} onTabChange={handleTabChange} />
+        <Routes>
+          <Route 
+            path="/login" 
+            element={
+              <>
+                <main className="app-main">
+                  <Login />
+                </main>
+                <Footer />
+              </>
+            } 
+          />
+          <Route 
+            path="/get-started" 
+            element={
+              <>
+                <main className="app-main">
+                  <GetStarted />
+                </main>
+                <Footer />
+              </>
+            } 
+          />
+          <Route 
+            path="/forgot-password" 
+            element={
+              <>
+                <main className="app-main">
+                  <ForgotPassword />
+                </main>
+                <Footer />
+              </>
+            } 
+          />
+          <Route 
+            path="/" 
+            element={
+              <>
+                <HomePage 
+                  activeTab={activeTab}
+                  setActiveTab={setActiveTab}
+                  handleStartBuilding={handleStartBuilding}
+                  handleTabChange={handleTabChange}
+                />
+                <Footer />
+              </>
+            } 
+          />
+        </Routes>
+      </div>
+    </BrowserRouter>
   );
 }
 

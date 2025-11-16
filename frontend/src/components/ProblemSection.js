@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
+import { motion } from 'framer-motion';
 import './ProblemSection.css';
-import SectionHeader from './ui/SectionHeader';
 
 const ProblemSection = () => {
   const [hoveredNode, setHoveredNode] = useState(null);
@@ -112,12 +112,73 @@ const ProblemSection = () => {
   return (
     <section className="problem-section">
       <div className="problem-container">
-        <SectionHeader
-          title="Why Web3 Founders Struggle"
-          subtitle="Building a Web3 startup involves navigating a complex landscape of technical and strategic decisions. Many founders face significant challenges that slow down development and increase costs."
-        />
-        
-        <div className="circular-diagram-container">
+        <div className="problem-layout">
+          {/* Left Column: Text Content */}
+          <motion.div 
+            className="problem-content-column"
+            initial={{ opacity: 0, x: -30 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1] }}
+          >
+            <motion.div 
+              className="problem-overline"
+              initial={{ opacity: 0, y: 10 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.4, delay: 0.1 }}
+            >
+              Why Web3
+            </motion.div>
+            <motion.h2 
+              className="problem-heading"
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6, delay: 0.2, ease: [0.4, 0, 0.2, 1] }}
+            >
+              A new ownership layer for the internet
+            </motion.h2>
+            <motion.p 
+              className="problem-body"
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6, delay: 0.4, ease: [0.4, 0, 0.2, 1] }}
+            >
+              Web3 lets founders build products where users actually own their assets, identities, and data. Tokens, smart contracts, and decentralized infrastructure unlock new business models—but they also add a huge amount of technical complexity.
+            </motion.p>
+            <motion.ul 
+              className="problem-benefits"
+              initial={{ opacity: 0 }}
+              whileInView={{ opacity: 1 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: 0.6 }}
+            >
+              {[
+                'Programmable value with tokens and smart contracts',
+                'Global, permissionless access from day one',
+                'Built-in composability with existing protocols',
+                'Community-driven growth through governance and incentives'
+              ].map((benefit, index) => (
+                <motion.li
+                  key={index}
+                  className="problem-benefit-item"
+                  initial={{ opacity: 0, x: -20 }}
+                  whileInView={{ opacity: 1, x: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.4, delay: 0.7 + index * 0.1 }}
+                  whileHover={{ x: 4 }}
+                >
+                  {benefit}
+                </motion.li>
+              ))}
+            </motion.ul>
+          </motion.div>
+
+          {/* Right Column: Circular Diagram */}
+          <div className="problem-diagram-column">
+            <div className="circular-diagram-container">
           {/* Animated background halo */}
           <div className="diagram-halo" />
           
@@ -194,6 +255,8 @@ const ProblemSection = () => {
                 </div>
               );
             })}
+            </div>
+          </div>
           </div>
         </div>
 

@@ -2,6 +2,7 @@ import os
 import io
 import json
 import zipfile
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException
@@ -35,6 +36,20 @@ class IdeaRequest(BaseModel):
     industry: Optional[str] = None
 
 
+class TokenomicsAllocation(BaseModel):
+    id: str
+    label: str
+    percent: float
+    description: Optional[str] = None
+
+
+class TokenomicsData(BaseModel):
+    token_symbol: str
+    total_supply: int
+    allocations: List[TokenomicsAllocation]
+    health_summary: Optional[str] = None
+
+
 class FrameworkResponse(BaseModel):
     summary: str
     user_segments: List[str]
@@ -46,6 +61,18 @@ class FrameworkResponse(BaseModel):
     web3_integration: List[str]
     next_steps: List[str]
     web3_library: str  # "ethers.js" or "web3.js"
+    tokenomics: Optional[TokenomicsData] = None
+
+
+class ContactRequest(BaseModel):
+    name: str
+    email: str
+    message: str
+
+
+class ContactResponse(BaseModel):
+    status: str
+    detail: str
 
 
 # ---------- Helpers ----------
@@ -58,10 +85,127 @@ def slugify(text: str) -> str:
     return s.strip("-") or "web3-starter"
 
 
+def normalize_tokenomics_data(
+    raw_tokenomics: Optional[dict],
+    stage: str,
+    industry: Optional[str],
+) -> TokenomicsData:
+    """
+    Normalize the AI-provided tokenomics block. If the AI omitted it, generate
+    a lightweight fallback so the frontend still receives useful data.
+    """
+    if raw_tokenomics and isinstance(raw_tokenomics, dict):
+        raw_allocations = raw_tokenomics.get("allocations") or raw_tokenomics.get("breakdown")
+        allocations: List[TokenomicsAllocation] = []
+
+        if isinstance(raw_allocations, list):
+            for idx, allocation in enumerate(raw_allocations):
+                if not isinstance(allocation, dict):
+                    continue
+                label = allocation.get("label") or allocation.get("name") or f"Allocation {idx + 1}"
+                percent = float(allocation.get("percent") or allocation.get("percentage") or 0)
+                if percent <= 0:
+                    continue
+                allocations.append(
+                    TokenomicsAllocation(
+                        id=allocation.get("id") or slugify(label) or f"allocation-{idx + 1}",
+                        label=label,
+                        percent=percent,
+                        description=allocation.get("description"),
+                    )
+                )
+
+        if allocations:
+            total_percent = sum(item.percent for item in allocations)
+            if total_percent != 100 and total_percent > 0:
+                delta = 100 - total_percent
+                allocations[-1].percent = max(0, allocations[-1].percent + delta)
+
+            symbol = (
+                raw_tokenomics.get("token_symbol")
+                or raw_tokenomics.get("tokenSymbol")
+                or raw_tokenomics.get("symbol")
+                or "W3C"
+            )
+
+            total_supply = (
+                raw_tokenomics.get("total_supply")
+                or raw_tokenomics.get("totalSupply")
+                or 1_000_000_000
+            )
+
+            return TokenomicsData(
+                token_symbol=str(symbol)[:6].upper(),
+                total_supply=int(total_supply),
+                allocations=allocations,
+                health_summary=raw_tokenomics.get("health_summary") or raw_tokenomics.get("summary"),
+            )
+
+    return generate_fallback_tokenomics(stage, industry)
+
+
+def generate_fallback_tokenomics(stage: str, industry: Optional[str]) -> TokenomicsData:
+    stage_normalized = (stage or "new").strip().lower()
+    industry_normalized = (industry or "ecosystem").strip().lower()
+    is_existing = stage_normalized == "existing"
+
+    allocations = [
+        TokenomicsAllocation(
+            id="team",
+            label="Team",
+            percent=20 if is_existing else 26,
+            description="Core contributors & ops",
+        ),
+        TokenomicsAllocation(
+            id="investors",
+            label="Investors",
+            percent=25 if is_existing else 15,
+            description="Strategic backers",
+        ),
+        TokenomicsAllocation(
+            id="community",
+            label="Community",
+            percent=35,
+            description="Growth, liquidity, and incentives",
+        ),
+        TokenomicsAllocation(
+            id="treasury",
+            label="Treasury",
+            percent=20,
+            description="Ecosystem runway",
+        ),
+    ]
+
+    if any(keyword in industry_normalized for keyword in ("gaming", "social", "consumer")):
+        allocations[2].percent += 5
+        allocations[3].percent -= 5
+    elif any(keyword in industry_normalized for keyword in ("finance", "defi", "trading")):
+        allocations[1].percent += 5
+        allocations[2].percent -= 5
+
+    total_percent = sum(item.percent for item in allocations)
+    if total_percent != 100:
+        delta = 100 - total_percent
+        allocations[-1].percent += delta
+
+    symbol_source = (industry or stage or "W3C").upper().replace(" ", "")
+
+    return TokenomicsData(
+        token_symbol=(symbol_source or "W3C")[:6],
+        total_supply=1_000_000_000,
+        allocations=allocations,
+        health_summary=(
+            "Weighted toward strategic investors with steady community incentives."
+            if is_existing
+            else "Community-first distribution with ample runway for the treasury."
+        ),
+    )
+
+
 def call_openai_framework(idea: str, stage: str, industry: Optional[str]) -> dict:
     """
     Call OpenAI to turn the user's idea into a structured framework
-    AND enough metadata to build a strong starter zip.
+    AND enough metadata (including tokenomics) to build a strong starter zip.
     """
     stage_text = (
         "new Web3 startup"
@@ -74,8 +218,8 @@ def call_openai_framework(idea: str, stage: str, industry: Optional[str]) -> dic
 You are a senior Web3 startup architect.
 
 Given a user's website / product request, the stage of their project, and their industry,
-you will design a Web3 project plan and return ONLY a JSON object that matches THIS EXACT schema
-(no extra keys, no commentary):
+you will design a Web3 project plan and return ONLY a JSON object that matches
+THIS EXACT schema (no extra keys, no commentary):
 
 {
   "summary": string,
@@ -88,6 +232,14 @@ you will design a Web3 project plan and return ONLY a JSON object that matches T
   "web3_integration": string[],
   "next_steps": string[],
   "web3_library": string,
+  "tokenomics": {
+    "token_symbol": string,
+    "total_supply": number,
+    "allocations": [
+      { "id": string, "label": string, "percent": number, "description": string }
+    ],
+    "health_summary": string
+  },
   "rpc_provider": string,
   "rpc_network_hint": string,
   "env_template": string,
@@ -108,16 +260,18 @@ Rules:
 - "web3_library" MUST be either "ethers.js" or "web3.js".
 - Choose "ethers.js" for most modern dapps, and "web3.js" only if there is a strong reason.
 - "rpc_provider" should be something like "Alchemy", "Infura", "QuickNode", or "Other".
-- "rpc_network_hint" should help the user know which network to choose,
-  e.g. "polygon-mainnet", "base-sepolia".
+- "rpc_network_hint" should help the user know which network to choose, e.g. "polygon-mainnet", "base-sepolia".
 - "env_template" should be a minimal .env example, for example:
 
   RPC_URL=https://...
   PRIVATE_KEY=0x...
 
 - "contracts" should contain 1-3 core contracts.
-- "name" is a short PascalCase identifier (e.g. "TicketNFT").
-- "solidity" must be a complete compilable Solidity file including pragma and contract definition.
+  - "name" is a short PascalCase identifier (e.g. "TicketNFT").
+  - "solidity" must be a complete compilable Solidity file including pragma and contract definition.
+- "tokenomics" must outline how 100% of the token supply is allocated across stakeholders
+  (team, investors, community, treasury, etc.). Percentages must add up to 100 and the token
+  symbol should be 3-6 uppercase letters inspired by the project.
 - Tailor everything to the specific idea, stage, and industry.
 """
 
@@ -311,7 +465,7 @@ main().catch((error) => {
         zf.writestr("scripts/deploy.js", deploy_js)
 
         # ---------- Optional smoke test ----------
-        smoke_test_template = """const {{ expect }} = require("chai");
+        smoke_test_template = """const { expect } = require("chai");
 const hre = require("hardhat");
 
 describe("Smoke test", function () {{
@@ -484,6 +638,9 @@ async def generate_framework(payload: IdeaRequest):
         raise HTTPException(status_code=400, detail="Idea text is required.")
 
     framework_data = call_openai_framework(idea, stage, industry)
+    tokenomics_data = normalize_tokenomics_data(
+        framework_data.get("tokenomics"), stage, industry
+    )
 
     return FrameworkResponse(
         summary=framework_data["summary"],
@@ -495,7 +652,8 @@ async def generate_framework(payload: IdeaRequest):
         backend_services=framework_data["backend_services"],
         web3_integration=framework_data["web3_integration"],
         next_steps=framework_data["next_steps"],
-        web3_library=framework_data["web3_library"],
+        web3_library=framework_data.get("web3_library", "ethers.js"),
+        tokenomics=tokenomics_data,
     )
 
 
@@ -516,6 +674,38 @@ async def generate_project_zip(payload: IdeaRequest):
         content=zip_bytes,
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/api/contact", response_model=ContactResponse)
+async def submit_contact(payload: ContactRequest):
+    name = payload.name.strip()
+    email = payload.email.strip()
+    message = payload.message.strip()
+
+    if not name or not email or not message:
+        raise HTTPException(
+            status_code=400,
+            detail="Name, email, and message are all required.",
+        )
+
+    if "@" not in email or "." not in email.split("@")[-1]:
+        raise HTTPException(
+            status_code=400,
+            detail="Please provide a valid email address.",
+        )
+
+    submission = {
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "name": name,
+        "email": email,
+        "message": message,
+    }
+    print("New contact submission:", json.dumps(submission))
+
+    return ContactResponse(
+        status="received",
+        detail="Thanks! We'll be in touch shortly.",
     )
 
 
