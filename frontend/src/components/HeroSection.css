@@ -1,6 +1,7 @@
 .hero-section {
-  min-height: calc(100vh - 60px);
-  padding: 6rem 2rem;
+  height: calc(100vh - 60px);
+  max-height: calc(100vh - 60px);
+  padding: 1.5rem 2rem;
   display: flex;
   align-items: center;
   position: relative;
@@ -40,13 +41,17 @@
   width: 100%;
   position: relative;
   z-index: 1;
+  height: 100%;
+  display: flex;
+  align-items: center;
 }
 
 .hero-layout {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 4rem;
+  gap: 3rem;
   align-items: center;
+  height: 100%;
 }
 
 /* Left: Content */
@@ -58,24 +63,24 @@
 .hero-badges {
   display: flex;
   gap: 0.5rem;
-  margin-bottom: 2rem;
+  margin-bottom: 1rem;
   flex-wrap: wrap;
 }
 
 .hero-title {
-  font-size: clamp(2.75rem, 6vw, 4.5rem);
+  font-size: clamp(2.25rem, 5vw, 3.75rem);
   font-weight: 700;
   line-height: 1.1;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
   letter-spacing: -0.03em;
   color: #f0f6fc;
 }
 
 .hero-subtitle {
-  font-size: clamp(1.125rem, 2vw, 1.25rem);
-  line-height: 1.6;
+  font-size: clamp(1rem, 1.75vw, 1.125rem);
+  line-height: 1.5;
   color: #8b949e;
-  margin-bottom: 2rem;
+  margin-bottom: 1.25rem;
   max-width: 600px;
   font-weight: 400;
 }
@@ -84,9 +89,9 @@
 .hero-features {
   display: flex;
   flex-wrap: wrap;
-  gap: 1.5rem;
-  margin-bottom: 1.5rem;
-  padding-bottom: 1.5rem;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -164,13 +169,14 @@
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 16px;
-  padding: 1.5rem;
+  padding: 1.25rem;
   box-shadow: 
     0 8px 32px rgba(0, 0, 0, 0.3),
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
   position: relative;
   overflow: hidden;
   transition: all 300ms ease;
+  max-height: 90%;
 }
 
 .hero-preview-card:hover {
@@ -426,20 +432,21 @@
 
 @media (max-width: 768px) {
   .hero-section {
-    padding: 4rem 1.5rem;
-    min-height: auto;
+    padding: 1.5rem 1.5rem;
+    height: auto;
+    min-height: 100vh;
   }
   
   .hero-title {
-    font-size: 2.5rem;
+    font-size: 2rem;
   }
   
   .hero-subtitle {
-    font-size: 1.125rem;
+    font-size: 1rem;
   }
   
   .hero-features {
-    gap: 1rem;
+    gap: 0.75rem;
   }
   
   .hero-actions {

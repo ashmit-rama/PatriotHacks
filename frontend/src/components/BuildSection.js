@@ -204,6 +204,14 @@ const BuildSection = () => {
                       <strong>Recommended chain:</strong> {framework.recommended_chain}
                     </div>
                   )}
+                  <div className="results-web3-library">
+                    <strong>Web3 Library:</strong>{' '}
+                    {framework.web3_library ? (
+                      <span>{framework.web3_library}</span>
+                    ) : (
+                      <span className="results-web3-library-empty">Not selected yet</span>
+                    )}
+                  </div>
                 </Card>
 
                 <div className="results-components">

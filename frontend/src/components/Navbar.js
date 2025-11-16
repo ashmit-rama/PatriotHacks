@@ -2,13 +2,14 @@ import React from 'react';
 import './Navbar.css';
 import Button from './ui/Button';
 import ThemeToggle from './ui/ThemeToggle';
+import Logo from './ui/Logo';
 
 const Navbar = ({ activeTab, onTabChange }) => {
   return (
     <nav className="navbar">
       <div className="navbar-container">
         <div className="navbar-brand" onClick={() => onTabChange('home')} style={{ cursor: 'pointer' }}>
-          <span className="navbar-logo">W3Connect</span>
+          <Logo variant="text" className="navbar-logo" />
         </div>
         
         <div className="navbar-tabs">

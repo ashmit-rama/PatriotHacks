@@ -1,0 +1,57 @@
+.logo-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo-svg {
+  width: 120px;
+  height: 120px;
+  display: block;
+}
+
+.logo-dot {
+  fill: currentColor;
+  opacity: 0.6;
+  filter: blur(0.8px);
+}
+
+.logo-text {
+  fill: currentColor;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+}
+
+.logo-symbol-path {
+  fill: currentColor;
+}
+
+/* Text-only version for navbar */
+.logo-text-only {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.logo-text-kairo {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: currentColor;
+  letter-spacing: -0.01em;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+}
+
+.logo-symbol-inline {
+  width: 20px;
+  height: 20px;
+  color: currentColor;
+  flex-shrink: 0;
+}
+
+/* Light mode */
+[data-theme="light"] .logo-dot {
+  opacity: 0.5;
+}
+
+[data-theme="light"] .logo-symbol-inline {
+  opacity: 0.9;
+}

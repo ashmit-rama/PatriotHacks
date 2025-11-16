@@ -46,6 +46,7 @@ class FrameworkResponse(BaseModel):
     backend_services: List[str]
     web3_integration: List[str]
     next_steps: List[str]
+    web3_library: Optional[str] = None
 
 
 # ---------- Helpers ----------
@@ -84,7 +85,8 @@ THIS EXACT schema (no extra keys, no commentary):
   "frontend_components": string[],
   "backend_services": string[],
   "web3_integration": string[],
-  "next_steps": string[]
+  "next_steps": string[],
+  "web3_library": string
 }
 
 Rules:
@@ -92,6 +94,7 @@ Rules:
 - "summary" is 2–4 sentences, clear and non-technical.
 - All arrays contain short bullet-style phrases, NOT long paragraphs.
 - "recommended_chain" is a single chain name (e.g. "Polygon", "Base", "Ethereum L2").
+- "web3_library" is a single Web3 library name (e.g. "ethers.js", "wagmi", "web3.js", "viem").
 - Tailor everything to the specific idea, stage, and industry.
 """
 
@@ -218,6 +221,7 @@ async def generate_framework(payload: IdeaRequest):
         backend_services=framework_data["backend_services"],
         web3_integration=framework_data["web3_integration"],
         next_steps=framework_data["next_steps"],
+        web3_library=framework_data.get("web3_library"),
     )
 
 

@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 import './HowItWorksSection.css';
 import SectionHeader from './ui/SectionHeader';
 import Card from './ui/Card';
@@ -27,15 +28,35 @@ const HowItWorksSection = () => {
       <div className="how-it-works-container">
         <SectionHeader
           title="How It Works"
-          subtitle="Get from idea to launch in three simple steps"
+          className="section-header-centered"
         />
         <div className="steps-container">
           {steps.map((step, index) => (
-            <Card key={index} padding="lg" hover className="step-card">
-              <div className="step-number">{step.number}</div>
-              <h3 className="step-title">{step.title}</h3>
-              <p className="step-description">{step.description}</p>
-            </Card>
+            <motion.div
+              key={index}
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-50px" }}
+              transition={{ duration: 0.5, delay: index * 0.15, ease: [0.4, 0, 0.2, 1] }}
+              whileHover={{ y: -6, scale: 1.02 }}
+            >
+              <Card padding="lg" hover className="step-card">
+                <motion.div 
+                  className="step-number"
+                  whileHover={{ scale: 1.1, rotate: 5 }}
+                  transition={{ type: "spring", stiffness: 300 }}
+                >
+                  {step.number}
+                </motion.div>
+                <motion.h3 
+                  className="step-title"
+                  whileHover={{ scale: 1.02 }}
+                >
+                  {step.title}
+                </motion.h3>
+                <p className="step-description">{step.description}</p>
+              </Card>
+            </motion.div>
           ))}
         </div>
       </div>

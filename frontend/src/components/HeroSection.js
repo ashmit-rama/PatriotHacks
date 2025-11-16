@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 import './HeroSection.css';
 import Button from './ui/Button';
 import Badge from './ui/Badge';
@@ -66,49 +67,137 @@ const HeroSection = ({ onStartBuilding }) => {
       <div className="hero-container">
         <div className="hero-layout">
           {/* Left: Content */}
-          <div className="hero-content">
-            <div className="hero-badges">
-              <Badge variant="accent">AI-Powered</Badge>
-              <Badge variant="default">Web3</Badge>
-              <Badge variant="default">Fast</Badge>
-            </div>
+          <motion.div 
+            className="hero-content"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1] }}
+          >
+            <motion.div 
+              className="hero-badges"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.3, delay: 0.2 }}
+              >
+                <Badge variant="accent">AI-Powered</Badge>
+              </motion.div>
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.3, delay: 0.3 }}
+              >
+                <Badge variant="default">Web3</Badge>
+              </motion.div>
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.3, delay: 0.4 }}
+              >
+                <Badge variant="default">Fast</Badge>
+              </motion.div>
+            </motion.div>
             
-            <h1 className="hero-title">
-              Build your product.<br />
-              We'll handle the blockchain.
-            </h1>
+            <motion.h1 
+              className="hero-title"
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, delay: 0.2, ease: [0.4, 0, 0.2, 1] }}
+            >
+              <motion.span
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.3 }}
+                style={{ display: 'block' }}
+              >
+                Build your product.
+              </motion.span>
+              <motion.span
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.5 }}
+                style={{ display: 'block' }}
+              >
+                We'll handle the blockchain.
+              </motion.span>
+            </motion.h1>
             
-            <p className="hero-subtitle">
+            <motion.p 
+              className="hero-subtitle"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.7, ease: [0.4, 0, 0.2, 1] }}
+            >
               The first AI-powered platform that turns any idea into a complete Web3 startup blueprint. 
               Get smart contracts, governance, tokenomics, authentication, deployment, and starter code—all in one place.
-            </p>
+            </motion.p>
 
             {/* Feature icons */}
-            <div className="hero-features">
+            <motion.div 
+              className="hero-features"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.5, delay: 0.9 }}
+            >
               {features.map((feature, index) => (
-                <div key={index} className="hero-feature-item">
+                <motion.div 
+                  key={index} 
+                  className="hero-feature-item"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.4, delay: 1 + index * 0.1 }}
+                  whileHover={{ scale: 1.05, x: 4 }}
+                >
                   <div className="hero-feature-icon">
                     {getFeatureIcon(feature.icon)}
                   </div>
                   <span className="hero-feature-label">{feature.label}</span>
-                </div>
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
             
-            <div className="hero-actions">
-              <Button variant="primary" size="lg" onClick={onStartBuilding} className="hero-btn-primary">
-                Start building
-              </Button>
-              <Button variant="secondary" size="lg" onClick={handleLearnMore} className="hero-btn-secondary">
-                Learn more
-                <span className="btn-arrow">→</span>
-              </Button>
-            </div>
-          </div>
+            <motion.div 
+              className="hero-actions"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 1.4 }}
+            >
+              <motion.div
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                <Button variant="primary" size="lg" onClick={onStartBuilding} className="hero-btn-primary">
+                  Start building
+                </Button>
+              </motion.div>
+              <motion.div
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                <Button variant="secondary" size="lg" onClick={handleLearnMore} className="hero-btn-secondary">
+                  Learn more
+                  <span className="btn-arrow">→</span>
+                </Button>
+              </motion.div>
+            </motion.div>
+          </motion.div>
 
           {/* Right: Product Preview Card */}
-          <div className="hero-preview">
-            <div className="hero-preview-card">
+          <motion.div 
+            className="hero-preview"
+            initial={{ opacity: 0, x: 50 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.8, delay: 0.4, ease: [0.4, 0, 0.2, 1] }}
+          >
+            <motion.div 
+              className="hero-preview-card"
+              whileHover={{ scale: 1.02, y: -4 }}
+              transition={{ duration: 0.3 }}
+            >
               <div className="preview-header">
                 <div className="preview-dots">
                   <span className="preview-dot"></span>
@@ -139,9 +228,9 @@ const HeroSection = ({ onStartBuilding }) => {
                   </div>
                 </div>
               </div>
-            </div>
+            </motion.div>
             <div className="preview-glow" />
-          </div>
+          </motion.div>
         </div>
       </div>
     </section>
