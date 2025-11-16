@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 import './ProductOverviewSection.css';
 import SectionHeader from './ui/SectionHeader';
 import Card from './ui/Card';
@@ -36,15 +37,29 @@ const ProductOverviewSection = () => {
       <div className="product-overview-container">
         <SectionHeader
           title="From Idea to Launch"
-          subtitle="Our platform generates a complete technical and business framework for launching a decentralized startup. Just describe your idea, and we'll provide everything you need to get started."
+          className="section-header-centered"
         />
         
         <div className="feature-cards-grid">
           {features.map((feature, index) => (
-            <Card key={index} padding="lg" hover className="feature-card">
-              <h3 className="feature-card-title">{feature.title}</h3>
-              <p className="feature-card-description">{feature.description}</p>
-            </Card>
+            <motion.div
+              key={index}
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-50px" }}
+              transition={{ duration: 0.5, delay: index * 0.1, ease: [0.4, 0, 0.2, 1] }}
+              whileHover={{ y: -4 }}
+            >
+              <Card padding="lg" hover className="feature-card">
+                <motion.h3 
+                  className="feature-card-title"
+                  whileHover={{ scale: 1.02 }}
+                >
+                  {feature.title}
+                </motion.h3>
+                <p className="feature-card-description">{feature.description}</p>
+              </Card>
+            </motion.div>
           ))}
         </div>
       </div>

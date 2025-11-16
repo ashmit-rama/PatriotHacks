@@ -61,6 +61,7 @@ class FrameworkResponse(BaseModel):
     backend_services: List[str]
     web3_integration: List[str]
     next_steps: List[str]
+    web3_library: Optional[str] = None
     tokenomics: Optional[TokenomicsData] = None
     web3_library: str  # "ethers.js" or "web3.js"
 
@@ -227,6 +228,7 @@ THIS EXACT schema (no extra keys, no commentary):
   "backend_services": string[],
   "web3_integration": string[],
   "next_steps": string[],
+  "web3_library": string,
   "tokenomics": {
     "token_symbol": string,
     "total_supply": number,
@@ -253,6 +255,7 @@ Rules:
 - "summary" is 2-4 sentences, clear and non-technical.
 - Lists (arrays) should contain short bullet-style phrases, NOT paragraphs.
 - "recommended_chain" should be a single chain name (e.g. "Polygon", "Base", "Ethereum L2").
+- "web3_library" is a single Web3 library name (e.g. "ethers.js", "wagmi", "web3.js", "viem").
 - "web3_library" MUST be either "ethers.js" or "web3.js".
 - Choose "ethers.js" for most modern dapps, and "web3.js" only if there is a strong reason.
 - "rpc_provider" should be something like "Alchemy", "Infura", "QuickNode", or "Other".
@@ -590,6 +593,7 @@ async def generate_framework(payload: IdeaRequest):
         backend_services=framework_data["backend_services"],
         web3_integration=framework_data["web3_integration"],
         next_steps=framework_data["next_steps"],
+        web3_library=framework_data.get("web3_library"),
         tokenomics=tokenomics_data,
         web3_library=framework_data["web3_library"],
     )

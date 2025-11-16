@@ -8,13 +8,85 @@
   margin: 0 auto;
 }
 
+/* Two-column layout */
+.problem-layout {
+  display: grid;
+  grid-template-columns: 40% 60%;
+  gap: 4rem;
+  align-items: center;
+  margin-top: 2rem;
+}
+
+/* Left Column: Text Content */
+.problem-content-column {
+  display: flex;
+  flex-direction: column;
+}
+
+.problem-overline {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8b5cf6;
+  margin-bottom: 1rem;
+}
+
+.problem-heading {
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 700;
+  line-height: 1.1;
+  margin-bottom: 1.5rem;
+  letter-spacing: -0.03em;
+  color: #f0f6fc;
+}
+
+.problem-body {
+  font-size: clamp(1.125rem, 2vw, 1.25rem);
+  line-height: 1.6;
+  color: #8b949e;
+  margin-bottom: 2rem;
+  font-weight: 400;
+}
+
+.problem-benefits {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.problem-benefit-item {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: #c9d1d9;
+  padding-left: 1.5rem;
+  position: relative;
+}
+
+.problem-benefit-item::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: #8b5cf6;
+  font-weight: 600;
+}
+
+/* Right Column: Circular Diagram */
+.problem-diagram-column {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* Circular Diagram Container */
 .circular-diagram-container {
   position: relative;
   width: 100%;
   max-width: 600px;
   height: 600px;
-  margin: 4rem auto;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -160,27 +232,31 @@
   cursor: pointer;
 }
 
+.outer-node:hover {
+  transform: translate(-50%, -50%) translate(var(--x), var(--y)) scale(1.1);
+}
+
 .outer-node-circle {
   width: 100px;
   height: 100px;
   border-radius: 50%;
   background: linear-gradient(135deg, #161b22 0%, #1c2128 100%);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  box-shadow: 
+    0 4px 16px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 250ms cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
+  transition: all 250ms ease;
 }
 
-.outer-node:hover .outer-node-circle,
-.outer-node.hovered .outer-node-circle {
-  transform: scale(1.1);
+.outer-node:hover .outer-node-circle {
   border-color: rgba(139, 92, 246, 0.4);
   box-shadow: 
-    0 4px 16px rgba(0, 0, 0, 0.3),
-    0 0 24px rgba(139, 92, 246, 0.2);
+    0 8px 24px rgba(0, 0, 0, 0.4),
+    0 0 40px rgba(139, 92, 246, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .outer-node-icon {
@@ -190,22 +266,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 250ms ease;
-}
-
-.outer-node:hover .outer-node-icon,
-.outer-node.hovered .outer-node-icon {
-  color: #a78bfa;
-  transform: scale(1.1);
 }
 
 .outer-node-content {
   text-align: center;
-  max-width: 140px;
+  max-width: 120px;
 }
 
 .outer-node-title {
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: #f0f6fc;
   margin: 0 0 0.5rem 0;
@@ -284,9 +353,23 @@
 
 /* Responsive */
 @media (max-width: 1024px) {
+  .problem-layout {
+    grid-template-columns: 1fr;
+    gap: 3rem;
+  }
+  
+  .problem-content-column {
+    order: 1;
+  }
+  
+  .problem-diagram-column {
+    order: 2;
+  }
+  
   .circular-diagram-container {
     max-width: 500px;
     height: 500px;
+    margin: 0 auto;
   }
   
   .outer-ring {
@@ -311,6 +394,22 @@
 }
 
 /* Light mode */
+[data-theme="light"] .problem-heading {
+  color: #0d1117;
+}
+
+[data-theme="light"] .problem-body {
+  color: #1f2937;
+}
+
+[data-theme="light"] .problem-benefit-item {
+  color: #1f2937;
+}
+
+[data-theme="light"] .problem-overline {
+  color: #7c3aed;
+}
+
 [data-theme="light"] .outer-node-title {
   color: #0d1117;
 }
@@ -340,6 +439,10 @@
 @media (max-width: 768px) {
   .problem-section {
     padding: 4rem 1.5rem;
+  }
+  
+  .problem-layout {
+    gap: 2rem;
   }
   
   .circular-diagram-container {
