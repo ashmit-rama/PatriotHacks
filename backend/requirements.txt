@@ -2,3 +2,6 @@ fastapi
 uvicorn
 pydantic
 openai
+web3
+py-solc-x
+json-repair

@@ -76,23 +76,72 @@ const BuildSection = () => {
   const [loadingZip, setLoadingZip] = useState(false);
   const [tokenomics, setTokenomics] = useState(null);
   const [hasGenerated, setHasGenerated] = useState(false);
+  const [deploymentInfo, setDeploymentInfo] = useState(null);
+  const [deploymentErrorMsg, setDeploymentErrorMsg] = useState('');
+  const [deploymentStatus, setDeploymentStatus] = useState('idle'); // idle | pending | success | error | skipped | none
 
-  const normalizeTokenomics = (rawTokenomics) => {
+  const DEFAULT_TOKENOMICS = {
+    tokenSymbol: 'W3C',
+    allocations: [
+      {
+        id: 'community',
+        label: 'Community Rewards & Incentives',
+        percent: 35,
+        description:
+          'Rewards for early users, liquidity mining, referral programs, and rental activity incentives.',
+      },
+      {
+        id: 'treasury',
+        label: 'Protocol Treasury',
+        percent: 25,
+        description: 'Long-term ecosystem development, partnerships, grants, and maintenance.',
+      },
+      {
+        id: 'team',
+        label: 'Core Team',
+        percent: 18,
+        description: 'Founders and team with multi-year vesting to align incentives.',
+      },
+      {
+        id: 'investors',
+        label: 'Investors & Strategic Partners',
+        percent: 12,
+        description: 'Seed and future funding rounds with vesting and lockups.',
+      },
+      {
+        id: 'liquidity',
+        label: 'DEX/CEX Liquidity',
+        percent: 5,
+        description: 'Liquidity pools on decentralized exchanges and market making.',
+      },
+      {
+        id: 'advisors',
+        label: 'Advisors',
+        percent: 5,
+        description: 'Key advisors and industry experts with vesting schedules.',
+      },
+    ],
+    healthSummary: 'Balanced distribution supporting community growth, long-term runway, and aligned incentives.',
+  };
+
+  const mapTokenomics = (rawTokenomics) => {
     if (!rawTokenomics || typeof rawTokenomics !== 'object') {
       return null;
     }
 
     const allocations = Array.isArray(rawTokenomics.allocations)
-      ? rawTokenomics.allocations.map((allocation, idx) => ({
-          id:
-            allocation.id ||
-            (allocation.label
-              ? allocation.label.toLowerCase().replace(/\s+/g, '-')
-              : `allocation-${idx}`),
-          label: allocation.label || `Allocation ${idx + 1}`,
-          percent: Number(allocation.percent) || 0,
-          description: allocation.description,
-        }))
+      ? rawTokenomics.allocations
+          .map((allocation, idx) => ({
+            id:
+              allocation.id ||
+              (allocation.label
+                ? allocation.label.toLowerCase().replace(/\s+/g, '-')
+                : `allocation-${idx}`),
+            label: allocation.label || `Allocation ${idx + 1}`,
+            percent: Number(allocation.percent) || 0,
+            description: allocation.description || '',
+          }))
+          .filter((slice) => slice.percent > 0)
       : [];
 
     if (!allocations.length) {
@@ -100,68 +149,17 @@ const BuildSection = () => {
     }
 
     return {
-      tokenSymbol: (rawTokenomics.tokenSymbol || rawTokenomics.symbol || 'W3C').slice(0, 6).toUpperCase(),
-      totalSupply: Number(rawTokenomics.totalSupply) || 1_000_000_000,
+      tokenSymbol: (
+        rawTokenomics.tokenSymbol ||
+        rawTokenomics.token_symbol ||
+        rawTokenomics.symbol ||
+        'W3C'
+      )
+        .slice(0, 6)
+        .toUpperCase(),
       allocations,
-      healthSummary: rawTokenomics.healthSummary || rawTokenomics.summary,
-    };
-  };
-
-  const generateFallbackTokenomics = (stageValue, industryValue) => {
-    const normalizedStage = (stageValue || 'new').toLowerCase();
-    const industryText = (industryValue || 'ecosystem').toLowerCase();
-    const isExisting = normalizedStage === 'existing';
-
-    const allocations = [
-      {
-        id: 'team',
-        label: 'Team',
-        percent: isExisting ? 20 : 26,
-        description: 'Core contributors & ops',
-      },
-      {
-        id: 'investors',
-        label: 'Investors',
-        percent: isExisting ? 25 : 15,
-        description: 'Strategic backers',
-      },
-      {
-        id: 'community',
-        label: 'Community',
-        percent: 35,
-        description: 'Growth, liquidity, and incentives',
-      },
-      {
-        id: 'treasury',
-        label: 'Treasury',
-        percent: 20,
-        description: 'Ecosystem runway',
-      },
-    ];
-
-    if (industryText.includes('gaming') || industryText.includes('social')) {
-      allocations[2].percent += 5;
-      allocations[3].percent -= 5;
-    } else if (industryText.includes('finance') || industryText.includes('defi')) {
-      allocations[1].percent += 5;
-      allocations[2].percent -= 5;
-    }
-
-    const totalPercent = allocations.reduce((sum, item) => sum + item.percent, 0);
-    if (totalPercent !== 100) {
-      const delta = 100 - totalPercent;
-      allocations[allocations.length - 1].percent += delta;
-    }
-
-    const symbolSource = (industryValue || 'HELPER').replace(/[^a-z0-9]/gi, '').toUpperCase();
-
-    return {
-      tokenSymbol: (symbolSource || 'W3C').slice(0, 5),
-      totalSupply: 1_000_000_000,
-      allocations,
-      healthSummary: isExisting
-        ? 'Weighted toward strategic investors with steady community incentives.'
-        : 'Community-first distribution with ample runway for the treasury.',
+      healthSummary:
+        rawTokenomics.healthSummary || rawTokenomics.health_summary || rawTokenomics.summary,
     };
   };
 
@@ -170,6 +168,9 @@ const BuildSection = () => {
     setError('');
     setFramework(null);
     setTokenomics(null);
+    setDeploymentInfo(null);
+    setDeploymentErrorMsg('');
+    setDeploymentStatus('idle');
 
     if (!idea.trim()) {
       setError('Please enter your website request before generating.');
@@ -198,12 +199,8 @@ const BuildSection = () => {
       const data = await res.json();
       setFramework(data);
 
-      const normalized = normalizeTokenomics(data.tokenomics);
-      if (normalized) {
-        setTokenomics(normalized);
-      } else {
-        setTokenomics(generateFallbackTokenomics(stage, industry));
-      }
+      const normalized = mapTokenomics(data.tokenomics);
+      setTokenomics(normalized || DEFAULT_TOKENOMICS);
 
       setHasGenerated(true);
     } catch (err) {
@@ -222,11 +219,17 @@ const BuildSection = () => {
     setTokenomics(null);
     setError('');
     setHasGenerated(false);
+    setDeploymentInfo(null);
+    setDeploymentErrorMsg('');
+    setDeploymentStatus('idle');
   };
 
   const handleDownloadZip = async () => {
     setError('');
-
+    setDeploymentStatus('pending');
+    setDeploymentInfo(null);
+    setDeploymentErrorMsg('');
+    
     if (!idea.trim()) {
       setError('Please enter your website request before downloading a starter project.');
       return;
@@ -251,14 +254,21 @@ const BuildSection = () => {
         throw new Error(errData.detail || 'Failed to generate starter project zip');
       }
 
-      const blob = await res.blob();
-
-      const disposition = res.headers.get('Content-Disposition') || '';
-      let filename = 'web3-starter.zip';
-      const match = disposition.match(/filename="([^"]+)"/);
-      if (match && match[1]) {
-        filename = match[1];
+      const data = await res.json();
+      const filename = data.filename || 'web3-starter.zip';
+      const zipBase64 = data.zip_base64;
+      if (!zipBase64) {
+        throw new Error('Server response did not include a ZIP payload.');
       }
+
+      const binaryString = window.atob(zipBase64);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i += 1) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      const blob = new Blob([bytes], { type: 'application/zip' });
 
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -268,9 +278,23 @@ const BuildSection = () => {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
+
+      setDeploymentInfo(data.deployment || null);
+      if (data.deployment) {
+        setDeploymentStatus('success');
+        setDeploymentErrorMsg('');
+      } else if (data.deployment_error) {
+        setDeploymentStatus('error');
+        setDeploymentErrorMsg(data.deployment_error);
+      } else {
+        setDeploymentStatus('skipped');
+        setDeploymentErrorMsg('');
+      }
     } catch (err) {
       console.error(err);
       setError(err.message || 'Something went wrong while downloading.');
+      setDeploymentStatus('error');
+      setDeploymentErrorMsg(err.message || 'Something went wrong while downloading.');
     } finally {
       setLoadingZip(false);
     }
@@ -416,7 +440,11 @@ const BuildSection = () => {
                 <p className="tokenomics-subtitle">
                   Supply split by allocation (100% = total token supply).
                 </p>
-                <TokenomicsSection tokenomics={tokenomics} />
+                <TokenomicsSection
+                  tokenSymbol={tokenomics.tokenSymbol}
+                  slices={tokenomics.allocations}
+                  healthSummary={tokenomics.healthSummary}
+                />
               </Card>
             </div>
           ) : null}
@@ -532,6 +560,43 @@ const BuildSection = () => {
                       >
                         Download ZIP
                       </Button>
+                    </div>
+                  )}
+                  {deploymentStatus === 'pending' && (
+                    <div className="mt-4 rounded-lg border border-slate-600/60 bg-slate-800/30 p-3 text-sm text-slate-200">
+                      Deploying contract to the testnet...
+                    </div>
+                  )}
+                  {deploymentStatus === 'success' && deploymentInfo && (
+                    <div className="mt-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-4 text-sm text-emerald-50">
+                      <p className="font-semibold text-emerald-200">On-chain Deployment</p>
+                      <p className="mt-1">
+                        Deployed to <strong>{deploymentInfo.network}</strong>
+                      </p>
+                      <p className="mt-1 break-all">
+                        Address:{' '}
+                        <code className="text-emerald-100">{deploymentInfo.address}</code>
+                      </p>
+                      {deploymentInfo.explorer_url && (
+                        <a
+                          href={deploymentInfo.explorer_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-emerald-200 underline"
+                        >
+                          View on explorer
+                        </a>
+                      )}
+                    </div>
+                  )}
+                  {deploymentStatus === 'error' && deploymentErrorMsg && (
+                    <div className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-100">
+                      Automatic deployment failed: {deploymentErrorMsg}
+                    </div>
+                  )}
+                  {deploymentStatus === 'skipped' && !deploymentErrorMsg && (
+                    <div className="mt-4 rounded-lg border border-slate-600/40 bg-slate-800/20 p-3 text-sm text-slate-300">
+                      Deployment was skipped (no contract was available). You can still use the ZIP to deploy manually.
                     </div>
                   )}
                 </Card>

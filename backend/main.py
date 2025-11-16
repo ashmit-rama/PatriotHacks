@@ -1,19 +1,25 @@
-import os
+import base64
 import io
 import json
+import logging
+import os
 import zipfile
 from datetime import datetime
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from openai import OpenAI
+from json_repair import repair_json
+
+from .deploy_contracts import deploy_contract, DeploymentSkipped
 
 # ---------- FastAPI setup ----------
 
 app = FastAPI()
+logger = logging.getLogger(__name__)
 
 app.add_middleware(
     CORSMiddleware,
@@ -89,6 +95,14 @@ def slugify(text: str) -> str:
     while "--" in s:
         s = s.replace("--", "-")
     return s.strip("-") or "web3-starter"
+
+
+def parse_json_with_repair(payload: str) -> dict:
+    try:
+        return json.loads(payload)
+    except json.JSONDecodeError:
+        repaired = repair_json(payload)
+        return json.loads(repaired)
 
 
 def normalize_tokenomics_data(
@@ -298,9 +312,11 @@ Rules:
   PRIVATE_KEY=0x...
 
 - "contracts" should contain 1-3 core contracts.
-- "name" is a short PascalCase identifier (e.g. "TicketNFT").
-- "solidity" must be a complete compilable Solidity file including pragma and contract definition.
+  - "name" is a short PascalCase identifier (e.g. "TicketNFT").
+  - "solidity" must be a complete compilable Solidity file including pragma and contract definition.
 - "tokenomics" must outline how 100% of the token supply is allocated across stakeholders (team, investors, community, treasury, etc.). Percentages must add up to 100 and the token symbol should be 3-6 uppercase letters inspired by the project.
+- Solidity files must be fully self-contained. Do NOT use external imports (e.g., OpenZeppelin). Include the complete contract logic in the single source file.
+- Constructors must not require arguments. Either omit constructor parameters entirely or provide sensible defaults so deployment can be called with zero arguments.
 - Tailor everything to the specific idea, stage, and industry.
 """
 
@@ -331,16 +347,17 @@ Rules:
 
         text = completion.choices[0].message.content or ""
 
-        # Try to parse JSON straight away
+        # Try to parse JSON straight away (with repair fallback)
         try:
-            data = json.loads(text)
-        except json.JSONDecodeError:
+            data = parse_json_with_repair(text)
+        except Exception:
             # If the model added extra text, try to strip to the first {...} block
             start = text.find("{")
             end = text.rfind("}")
             if start == -1 or end == -1:
                 raise
-            data = json.loads(text[start : end + 1])
+            snippet = text[start : end + 1]
+            data = parse_json_with_repair(snippet)
 
         return data
 
@@ -390,7 +407,14 @@ Rules:
         )
 
 
-def build_zip_bytes(idea: str, framework: dict) -> bytes:
+def build_zip_bytes(
+    idea: str,
+    framework: dict,
+    contract_address: Optional[str] = None,
+    contract_network: Optional[str] = None,
+    contract_explorer_url: Optional[str] = None,
+    deployment_error: Optional[str] = None,
+) -> bytes:
     """
     Build a starter project zip containing:
     - README.md with summary, components, and quickstart
@@ -453,6 +477,24 @@ def build_zip_bytes(idea: str, framework: dict) -> bytes:
         readme += "   ```bash\n"
         readme += "   npx hardhat test\n"
         readme += "   ```\n\n"
+
+        readme += "## On-chain Deployment\n\n"
+        if contract_address:
+            readme += (
+                f"This contract has already been deployed to "
+                f"{contract_network or 'your configured network'}.\n\n"
+            )
+            readme += f"- Address: {contract_address}\n"
+            readme += f"- Explorer: {contract_explorer_url or 'N/A'}\n\n"
+        elif deployment_error:
+            readme += "An automatic deployment attempt was made but failed:\n\n"
+            readme += f"> {deployment_error}\n\n"
+            readme += "You can redeploy manually using the Hardhat commands above.\n\n"
+        else:
+            readme += (
+                "Deployment has not been performed yet. Run the Hardhat deploy\n"
+                "script in the Quickstart once you are ready.\n\n"
+            )
 
         readme += "## Frontend Components\n"
         for item in framework["frontend_components"]:
@@ -593,6 +635,8 @@ async def root():
         zf.writestr("frontend/README.md", frontend_readme)
 
         # ---------- Web3 connection: ethers.js or web3.js ----------
+        deployed_address_value = contract_address or "<DEPLOYED_CONTRACT_ADDRESS>"
+
         if web3_lib == "web3.js":
             connection_js = f"""// Web3 connection using web3.js
 // Chain: {chain}
@@ -609,18 +653,18 @@ if (!RPC_URL) {{
 
 const web3 = new Web3(RPC_URL);
 
-// TODO: replace with your deployed contract address + ABI
-const CONTRACT_ADDRESS = "<DEPLOYED_CONTRACT_ADDRESS>";
-const CONTRACT_ABI = [
-  // add your ABI items here
-];
-
 export function getWeb3() {{
   if (!RPC_URL) {{
     throw new Error("RPC_URL is not set. Add NEXT_PUBLIC_RPC_URL in your env.");
   }}
   return web3;
 }}
+
+// TODO: replace with your deployed contract address + ABI
+const CONTRACT_ADDRESS = "{deployed_address_value}";
+const CONTRACT_ABI = [
+  // add your ABI items here
+];
 
 export function getReadOnlyContract() {{
   return new web3.eth.Contract(CONTRACT_ABI, CONTRACT_ADDRESS);
@@ -648,7 +692,7 @@ export function getProvider() {{
 }}
 
 // TODO: replace with your deployed contract address + ABI
-const CONTRACT_ADDRESS = "<DEPLOYED_CONTRACT_ADDRESS>";
+const CONTRACT_ADDRESS = "{deployed_address_value}";
 const CONTRACT_ABI = [
   // add your ABI items here
 ];
@@ -751,13 +795,61 @@ async def generate_project_zip(payload: IdeaRequest):
         raise HTTPException(status_code=400, detail="Idea text is required.")
 
     framework_data = call_openai_framework(idea, stage, industry)
-    zip_bytes = build_zip_bytes(idea, framework_data)
+
+    deployment_details = None
+    deployment_error = None
+
+    contracts = framework_data.get("contracts") or []
+    main_contract = next(
+        (
+            c
+            for c in contracts
+            if isinstance(c, dict) and (c.get("solidity") or "").strip()
+        ),
+        None,
+    )
+
+    if main_contract:
+        contract_name = (
+            (main_contract.get("name") or "MyContract").strip() or "MyContract"
+        )
+        solidity_source = (main_contract.get("solidity") or "").strip()
+
+        try:
+            deployment_details = deploy_contract(solidity_source, contract_name)
+        except DeploymentSkipped as skipped:
+            logger.info("Skipping deployment: %s", skipped)
+        except Exception as exc:
+            deployment_error = str(exc)
+            logger.error("Contract deployment failed: %s", exc)
+    else:
+        logger.info("AI response did not include a Solidity contract; skipping deploy.")
+
+    zip_bytes = build_zip_bytes(
+        idea,
+        framework_data,
+        contract_address=(
+            deployment_details["address"] if deployment_details else None
+        ),
+        contract_network=(
+            deployment_details["network"] if deployment_details else None
+        ),
+        contract_explorer_url=(
+            deployment_details["explorer_url"] if deployment_details else None
+        ),
+        deployment_error=deployment_error,
+    )
     filename = slugify(idea) + ".zip"
 
-    return Response(
-        content=zip_bytes,
-        media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    encoded_zip = base64.b64encode(zip_bytes).decode("utf-8")
+
+    return JSONResponse(
+        {
+            "filename": filename,
+            "zip_base64": encoded_zip,
+            "deployment": deployment_details,
+            "deployment_error": deployment_error,
+        }
     )
 
 
