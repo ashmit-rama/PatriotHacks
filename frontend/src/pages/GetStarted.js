@@ -1,17 +1,21 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import './Auth.css';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 
-const GetStarted = () => {
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
+
+const GetStarted = ({ onSignupComplete = () => {} }) => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     password: '',
     confirmPassword: '',
   });
+  const navigate = useNavigate();
 
   const handleChange = (e) => {
     setFormData({
@@ -20,17 +24,43 @@ const GetStarted = () => {
     });
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    // TODO: Implement sign-up logic
-    console.log('Sign-up form submitted:', formData);
-    
-    // Basic validation
-    if (formData.password !== formData.confirmPassword) {
-      alert('Passwords do not match');
-      return;
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  console.log('Sign-up form submitted:', formData);
+
+  // Basic validation
+  if (formData.password !== formData.confirmPassword) {
+    alert('Passwords do not match');
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE}/auth/signup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: formData.email,
+        password: formData.password,
+        // backend only requires email + password; name can go into profiles later
+      }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      // show real error from backend if available
+      throw new Error(data.error || data.detail || 'Unable to create account');
     }
-  };
+
+    alert('Account created! Please confirm the email we just sent, then log in.');
+    setFormData({ name: '', email: '', password: '', confirmPassword: '' });
+    onSignupComplete();
+    navigate('/');
+  } catch (err) {
+    console.error('Signup failed:', err);
+    alert(err.message || 'Failed to create account.');
+  }
+};
 
   return (
     <div className="auth-page">
@@ -101,4 +131,3 @@ const GetStarted = () => {
 };
 
 export default GetStarted;
-

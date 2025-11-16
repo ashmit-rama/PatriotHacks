@@ -1,14 +1,27 @@
 import React from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import './Navbar.css';
 import Button from './ui/Button';
 import ThemeToggle from './ui/ThemeToggle';
 import Logo from './ui/Logo';
 
-const Navbar = ({ activeTab, onTabChange }) => {
+const Navbar = ({
+  activeTab,
+  onTabChange,
+  onOpenAuth = () => {},
+  session = null,
+  currentUser = null,
+  onAccountClick = () => {},
+}) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const isAuthPage = ['/login', '/get-started', '/forgot-password'].includes(location.pathname);
+  const isAuthPage = ['/login', '/get-started', '/forgot-password', '/reset-password'].includes(location.pathname);
+  const user = currentUser || session?.user || null;
+  const displayName = user?.full_name
+    ? user.full_name
+    : user?.email
+    ? user.email.split('@')[0]
+    : null;
 
   const handleLogoClick = () => {
     if (onTabChange) {
@@ -55,13 +68,26 @@ const Navbar = ({ activeTab, onTabChange }) => {
         )}
 
         <div className="navbar-actions">
-          <Link to="/login" className="nav-link">
-            <Button variant="ghost" size="sm">Log in</Button>
-          </Link>
-          <Link to="/get-started">
-            <Button variant="primary" size="sm">Get Started</Button>
-          </Link>
           <ThemeToggle />
+          {user ? (
+            <Button
+              variant="primary"
+              size="sm"
+              className="navbar-account-button"
+              onClick={onAccountClick}
+            >
+              {displayName}
+            </Button>
+          ) : (
+            <>
+              <Button variant="ghost" size="sm" onClick={() => onOpenAuth('login')}>
+                Log in
+              </Button>
+              <Button variant="primary" size="sm" onClick={() => onOpenAuth('signup')}>
+                Get Started
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </nav>

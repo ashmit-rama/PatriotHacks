@@ -5,11 +5,14 @@ import zipfile
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException
+import httpx
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from openai import OpenAI
+
+from supabase_client import supabase_client, SUPABASE_URL, SUPABASE_ANON_KEY
 
 # ---------- FastAPI setup ----------
 
@@ -31,6 +34,9 @@ if not openai_api_key:
     print("Please set it with: $env:OPENAI_API_KEY='your-key-here' (PowerShell)")
 
 client = OpenAI(api_key=openai_api_key) if openai_api_key else None
+
+SUPABASE_EMAIL_REDIRECT_URL = os.getenv("SUPABASE_EMAIL_REDIRECT_URL", "http://localhost:3000")
+SUPABASE_RESET_REDIRECT_URL = os.getenv("SUPABASE_RESET_REDIRECT_URL", f"{SUPABASE_EMAIL_REDIRECT_URL.rstrip('/')}/reset-password")
 
 
 # ---------- Pydantic models ----------
@@ -79,6 +85,29 @@ class ContactRequest(BaseModel):
 class ContactResponse(BaseModel):
     status: str
     detail: str
+
+
+class SignupRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    access_token: str
+    new_password: str
+
+
+class LogoutRequest(BaseModel):
+    access_token: str
 
 
 # ---------- Helpers ----------
@@ -231,6 +260,22 @@ def generate_fallback_tokenomics(
             else "Community-first distribution with ample runway for the treasury."
         ),
     )
+
+
+def normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
+def supabase_logout(access_token: str) -> None:
+    """Call Supabase logout endpoint to revoke the current session."""
+    url = f"{SUPABASE_URL.rstrip('/')}/auth/v1/logout"
+    headers = {
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": f"Bearer {access_token}",
+    }
+    resp = httpx.post(url, headers=headers, timeout=10)
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=400, detail="Failed to revoke session token.")
 
 
 def call_openai_framework(idea: str, stage: str, industry: Optional[str]) -> dict:
@@ -791,6 +836,155 @@ async def submit_contact(payload: ContactRequest):
         status="received",
         detail="Thanks! We'll be in touch shortly.",
     )
+
+
+# ---------- Auth routes ----------
+
+
+@app.post("/auth/signup", status_code=201)
+async def auth_signup(payload: SignupRequest):
+    """Create a Supabase Auth user and trigger the confirmation email."""
+    email = normalize_email(payload.email)
+
+    try:
+        result = supabase_client.auth.sign_up(
+            {
+                "email": email,
+                "password": payload.password,
+                "options": {"email_redirect_to": SUPABASE_EMAIL_REDIRECT_URL},
+            }
+        )
+    except Exception as exc:
+        # Real errors (bad URL, bad key, etc.)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    # 👇 Supabase pattern: if identities is an empty list,
+    #    it usually means the user/email already exists.
+    user = getattr(result, "user", None)
+    identities = getattr(user, "identities", None) if user is not None else None
+
+    if isinstance(identities, list) and len(identities) == 0:
+        # duplicate signup – user is already registered
+        raise HTTPException(status_code=400, detail="Email already in use")
+
+    # Normal successful signup (new email)
+    return JSONResponse(
+        {"message": "Account created. Please confirm the email we just sent."},
+        status_code=201,
+    )
+
+
+
+@app.post("/auth/login")
+async def auth_login(payload: LoginRequest):
+    """Authenticate a confirmed user via Supabase email/password login."""
+    email = normalize_email(payload.email)
+    try:
+        response = supabase_client.auth.sign_in_with_password(
+            {"email": email, "password": payload.password}
+        )
+    except Exception as exc:
+        message = str(exc)
+        if "email not confirmed" in message.lower():
+            raise HTTPException(
+                status_code=401,
+                detail="Please confirm your email before signing in.",
+            )
+        raise HTTPException(status_code=401, detail="Invalid email or password") from exc
+
+    session = getattr(response, "session", None)
+    user = getattr(response, "user", None)
+    if not session or not getattr(session, "access_token", None) or not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    if not getattr(user, "email_confirmed_at", None):
+        raise HTTPException(
+            status_code=401,
+            detail="Please confirm your email before signing in.",
+        )
+
+    data = {
+        "access_token": session.access_token,
+        "refresh_token": session.refresh_token,
+        "user": {"id": user.id, "email": user.email},
+    }
+    # 👇 wrap in `data` so the frontend sees `data.data`
+    return JSONResponse({"data": data})
+
+
+
+@app.post("/auth/forgot-password")
+async def forgot_password(payload: ForgotPasswordRequest):
+    """Send a Supabase password reset email for the supplied address."""
+    email = normalize_email(payload.email)
+    try:
+        supabase_client.auth.reset_password_for_email(
+            email,
+            options={"redirect_to": SUPABASE_RESET_REDIRECT_URL},
+        )
+    except Exception:
+        pass
+    return JSONResponse(
+        {"message": "If that email exists, a reset link has been sent."}
+    )
+
+
+@app.post("/auth/reset-password")
+async def reset_password(payload: ResetPasswordRequest):
+    """Finalize a Supabase password reset using the access token from the email."""
+    url = f"{SUPABASE_URL.rstrip('/')}/auth/v1/user"
+    headers = {
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": f"Bearer {payload.access_token}",
+    }
+    resp = httpx.put(
+        url,
+        headers=headers,
+        json={"password": payload.new_password},
+        timeout=10,
+    )
+    if resp.status_code >= 400:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid or expired reset token. Please request a new link.",
+        )
+    return JSONResponse(
+        {
+            "message": "Password updated successfully. You can now log in with your new password."
+        }
+    )
+
+
+@app.get("/auth/me")
+async def auth_me(authorization: Optional[str] = Header(default=None)):
+    """Return the Supabase user associated with the provided bearer token."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+
+    token = authorization.split(" ", 1)[1]
+    try:
+        response = supabase_client.auth.get_user(token)
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="Invalid token") from exc
+
+    user = getattr(response, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    return JSONResponse(
+        {"data": {
+            "id": user.id,
+            "email": user.email,
+            "email_confirmed_at": user.email_confirmed_at,
+        }}
+    )
+
+
+@app.post("/auth/logout")
+async def auth_logout(payload: LogoutRequest):
+    """Revoke the current Supabase session using the provided access token."""
+    supabase_logout(payload.access_token)
+    return JSONResponse({"message": "Logged out successfully."})
 
 
 if __name__ == "__main__":

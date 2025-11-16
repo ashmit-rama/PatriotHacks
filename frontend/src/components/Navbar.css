@@ -91,6 +91,12 @@
   justify-self: end;
 }
 
+.navbar-account-button {
+  padding-inline: 1rem;
+  border-radius: 999px;
+  text-transform: none;
+}
+
 .nav-link {
   text-decoration: none;
   color: inherit;

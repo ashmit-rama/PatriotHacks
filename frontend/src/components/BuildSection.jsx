@@ -66,7 +66,7 @@ const SectionIcons = {
   ),
 };
 
-const BuildSection = () => {
+const BuildSection = ({ onProjectGenerated }) => {
   const [idea, setIdea] = useState('');
   const [stage, setStage] = useState('new');
   const [industry, setIndustry] = useState('');
@@ -199,10 +199,21 @@ const BuildSection = () => {
       setFramework(data);
 
       const normalized = normalizeTokenomics(data.tokenomics);
-      if (normalized) {
-        setTokenomics(normalized);
-      } else {
-        setTokenomics(generateFallbackTokenomics(stage, industry));
+      const resolvedTokenomics =
+        normalized || generateFallbackTokenomics(stage, industry);
+      setTokenomics(resolvedTokenomics);
+
+      if (typeof onProjectGenerated === 'function') {
+        onProjectGenerated({
+          id: Date.now().toString(),
+          createdAt: new Date().toISOString(),
+          idea: idea.trim(),
+          stage,
+          industry: industry || null,
+          summary: data.summary,
+          framework: data,
+          tokenomics: resolvedTokenomics,
+        });
       }
 
       setHasGenerated(true);

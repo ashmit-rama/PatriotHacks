@@ -5,7 +5,9 @@ import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 
-const Login = () => {
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
+const Login = ({ onAuthSuccess = () => {} }) => {
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -19,11 +21,35 @@ const Login = () => {
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // TODO: Implement authentication logic
-    console.log('Login form submitted:', formData);
+    try {
+      const response = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || 'Invalid email or password');
+      }
+
+      // 🔥 IMPORTANT: pull out the inner session object
+      const sessionData = data.data || data;
+      console.log('🔥 sessionData from login:', sessionData);
+
+      // This updates AppRoutes -> session + currentUser
+      onAuthSuccess(sessionData);
+
+      navigate('/');
+    } catch (error) {
+      alert(error.message || 'Unable to log in.');
+    }
   };
+
+
 
   return (
     <div className="auth-page">
@@ -77,4 +103,3 @@ const Login = () => {
 };
 
 export default Login;
-

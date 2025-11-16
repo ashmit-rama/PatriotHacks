@@ -5,14 +5,30 @@ import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
 const ForgotPassword = () => {
   const [email, setEmail] = useState('');
+  const [status, setStatus] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // TODO: Implement password reset logic
-    console.log('Password reset requested for:', email);
-    alert('If an account exists with this email, you will receive a reset link.');
+    setLoading(true);
+    setStatus(null);
+    try {
+      await fetch(`${API_BASE}/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      setStatus({ type: 'success', message: 'If an account exists with this email, you will receive a reset link.' });
+      setEmail('');
+    } catch (error) {
+      setStatus({ type: 'error', message: 'Unable to process request right now.' });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -24,7 +40,11 @@ const ForgotPassword = () => {
           <p className="auth-description">
             Enter your email and we'll send you a reset link.
           </p>
-          
+          {status && (
+            <div className={`auth-status auth-status-${status.type}`}>
+              {status.message}
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="auth-form">
             <Input
               label="Email"
@@ -36,11 +56,12 @@ const ForgotPassword = () => {
               required
             />
             
-            <Button 
-              type="submit" 
-              variant="primary" 
-              size="md" 
+            <Button
+              type="submit"
+              variant="primary"
+              size="md"
               className="auth-submit-button"
+              loading={loading}
             >
               Send reset link
             </Button>
@@ -58,4 +79,3 @@ const ForgotPassword = () => {
 };
 
 export default ForgotPassword;
-
