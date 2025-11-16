@@ -3,6 +3,7 @@ import './BuildSection.css';
 import Card from './ui/Card';
 import Button from './ui/Button';
 import SectionHeader from './ui/SectionHeader';
+import { TokenomicsSection } from "./TokenomicsSection";
 
 const API_BASE = 'http://localhost:8000';
 
@@ -14,11 +15,101 @@ const BuildSection = () => {
   const [error, setError] = useState('');
   const [loadingFramework, setLoadingFramework] = useState(false);
   const [loadingZip, setLoadingZip] = useState(false);
+  const [tokenomics, setTokenomics] = useState(null);
+
+  const normalizeTokenomics = (rawTokenomics) => {
+    if (!rawTokenomics || typeof rawTokenomics !== 'object') {
+      return null;
+    }
+
+    const allocations = Array.isArray(rawTokenomics.allocations)
+      ? rawTokenomics.allocations.map((allocation, idx) => ({
+          id:
+            allocation.id ||
+            (allocation.label
+              ? allocation.label.toLowerCase().replace(/\s+/g, '-')
+              : `allocation-${idx}`),
+          label: allocation.label || `Allocation ${idx + 1}`,
+          percent: Number(allocation.percent) || 0,
+          description: allocation.description,
+        }))
+      : [];
+
+    if (!allocations.length) {
+      return null;
+    }
+
+    return {
+      tokenSymbol: (rawTokenomics.tokenSymbol || rawTokenomics.symbol || 'W3C').slice(0, 6).toUpperCase(),
+      totalSupply: Number(rawTokenomics.totalSupply) || 1_000_000_000,
+      allocations,
+      healthSummary: rawTokenomics.healthSummary || rawTokenomics.summary,
+    };
+  };
+
+  const generateFallbackTokenomics = (stageValue, industryValue) => {
+    const normalizedStage = (stageValue || 'new').toLowerCase();
+    const industryText = (industryValue || 'ecosystem').toLowerCase();
+    const isExisting = normalizedStage === 'existing';
+
+    const allocations = [
+      {
+        id: 'team',
+        label: 'Team',
+        percent: isExisting ? 20 : 26,
+        description: 'Core contributors & ops',
+      },
+      {
+        id: 'investors',
+        label: 'Investors',
+        percent: isExisting ? 25 : 15,
+        description: 'Strategic backers',
+      },
+      {
+        id: 'community',
+        label: 'Community',
+        percent: 35,
+        description: 'Growth, liquidity, and incentives',
+      },
+      {
+        id: 'treasury',
+        label: 'Treasury',
+        percent: 20,
+        description: 'Ecosystem runway',
+      },
+    ];
+
+    if (industryText.includes('gaming') || industryText.includes('social')) {
+      allocations[2].percent += 5;
+      allocations[3].percent -= 5;
+    } else if (industryText.includes('finance') || industryText.includes('defi')) {
+      allocations[1].percent += 5;
+      allocations[2].percent -= 5;
+    }
+
+    const totalPercent = allocations.reduce((sum, item) => sum + item.percent, 0);
+    if (totalPercent !== 100) {
+      const delta = 100 - totalPercent;
+      allocations[allocations.length - 1].percent += delta;
+    }
+
+    const symbolSource = (industryValue || 'HELPER').replace(/[^a-z0-9]/gi, '').toUpperCase();
+
+    return {
+      tokenSymbol: (symbolSource || 'W3C').slice(0, 5),
+      totalSupply: 1_000_000_000,
+      allocations,
+      healthSummary: isExisting
+        ? 'Weighted toward strategic investors with steady community incentives.'
+        : 'Community-first distribution with ample runway for the treasury.',
+    };
+  };
 
   const handleGenerateFramework = async (e) => {
     e.preventDefault();
     setError('');
     setFramework(null);
+    setTokenomics(null);
 
     if (!idea.trim()) {
       setError('Please enter your website request before generating.');
@@ -46,6 +137,13 @@ const BuildSection = () => {
 
       const data = await res.json();
       setFramework(data);
+
+      const normalized = normalizeTokenomics(data.tokenomics);
+      if (normalized) {
+        setTokenomics(normalized);
+      } else {
+        setTokenomics(generateFallbackTokenomics(stage, industry));
+      }
     } catch (err) {
       console.error(err);
       setError(err.message || 'Something went wrong while generating.');
@@ -240,6 +338,14 @@ const BuildSection = () => {
                   </p>
                 </div>
               </Card>
+            )}
+
+            {tokenomics ? (
+              <TokenomicsSection tokenomics={tokenomics} />
+            ) : (
+              <p className="mt-6 text-sm text-slate-500">
+                Tokenomics will appear here after you generate a framework.
+              </p>
             )}
           </div>
         </div>
