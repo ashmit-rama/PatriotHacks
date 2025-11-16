@@ -3,12 +3,21 @@ import './TokenomicsChart.css';
 
 const TokenomicsChart = ({ data = [] }) => {
   const colors = [
-    '#6366F1',
-    '#F472B6',
-    '#22D3EE',
-    '#F59E0B',
-    '#34D399',
-    '#A78BFA',
+    '#6366F1', // indigo
+    '#F472B6', // pink
+    '#22D3EE', // cyan
+    '#F59E0B', // amber
+    '#34D399', // emerald
+    '#A78BFA', // violet
+    '#FB7185', // rose
+    '#4ADE80', // green
+    '#FBBF24', // yellow
+    '#60A5FA', // blue
+    '#C084FC', // purple
+    '#FB923C', // orange
+    '#14B8A6', // teal
+    '#EC4899', // fuchsia
+    '#8B5CF6', // purple
   ];
 
   // SVG donut chart constants
@@ -16,7 +25,6 @@ const TokenomicsChart = ({ data = [] }) => {
   const center = size / 2;
   const radius = 70;
   const innerRadius = 50;
-  const strokeWidth = radius - innerRadius;
 
   // Calculate SVG arc paths
   const getArcPath = (startAngle, endAngle, outerRadius, innerRadius) => {

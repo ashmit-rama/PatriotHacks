@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import './App.css';
+
 import Navbar from './components/Navbar';
 import HeroSection from './components/HeroSection';
 import ProblemSection from './components/ProblemSection';
@@ -15,13 +16,30 @@ import Login from './pages/Login';
 import GetStarted from './pages/GetStarted';
 import ForgotPassword from './pages/ForgotPassword';
 
-function HomePage({ activeTab, setActiveTab, handleStartBuilding, handleTabChange }) {
+// Home page wrapper for the tabbed content
+function HomePage({
+  activeTab,
+  setActiveTab,
+  handleStartBuilding,
+  handleTabChange,
+  agentResult,
+  setAgentResult,
+}) {
   const renderContent = () => {
     switch (activeTab) {
       case 'build':
-        return <BuildSection />;
+        return (
+          <BuildSection
+            agentResult={agentResult}
+            setAgentResult={setAgentResult}
+          />
+        );
       case 'stored-zips':
-        return <StoredZipsSection />;
+        return (
+          <StoredZipsSection
+            agentResult={agentResult}
+          />
+        );
       case 'home':
       default:
         return (
@@ -45,6 +63,8 @@ function HomePage({ activeTab, setActiveTab, handleStartBuilding, handleTabChang
 
 function App() {
   const [activeTab, setActiveTab] = useState('home');
+  // ⬇️ full multi-agent backend response lives here
+  const [agentResult, setAgentResult] = useState(null);
 
   const handleStartBuilding = () => {
     setActiveTab('build');
@@ -61,9 +81,10 @@ function App() {
       <div className="app">
         <AnimatedBackground />
         <Navbar activeTab={activeTab} onTabChange={handleTabChange} />
+
         <Routes>
-          <Route 
-            path="/login" 
+          <Route
+            path="/login"
             element={
               <>
                 <main className="app-main">
@@ -71,10 +92,11 @@ function App() {
                 </main>
                 <Footer />
               </>
-            } 
+            }
           />
-          <Route 
-            path="/get-started" 
+
+          <Route
+            path="/get-started"
             element={
               <>
                 <main className="app-main">
@@ -82,10 +104,11 @@ function App() {
                 </main>
                 <Footer />
               </>
-            } 
+            }
           />
-          <Route 
-            path="/forgot-password" 
+
+          <Route
+            path="/forgot-password"
             element={
               <>
                 <main className="app-main">
@@ -93,21 +116,24 @@ function App() {
                 </main>
                 <Footer />
               </>
-            } 
+            }
           />
-          <Route 
-            path="/" 
+
+          <Route
+            path="/"
             element={
               <>
-                <HomePage 
+                <HomePage
                   activeTab={activeTab}
                   setActiveTab={setActiveTab}
                   handleStartBuilding={handleStartBuilding}
                   handleTabChange={handleTabChange}
+                  agentResult={agentResult}
+                  setAgentResult={setAgentResult}
                 />
                 <Footer />
               </>
-            } 
+            }
           />
         </Routes>
       </div>

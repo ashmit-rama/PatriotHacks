@@ -3,19 +3,33 @@ import './TokenomicsSection.css';
 import TokenomicsChart from './ui/TokenomicsChart';
 
 export const TokenomicsSection = ({ tokenomics }) => {
+  // Defensive: if something goes weird, don't crash the whole page
+  if (!tokenomics || !Array.isArray(tokenomics.allocations)) {
+    return null;
+  }
+
   const colors = [
-    '#6366F1',
-    '#F472B6',
-    '#22D3EE',
-    '#F59E0B',
-    '#34D399',
-    '#A78BFA',
+    '#6366F1', // indigo
+    '#F472B6', // pink
+    '#22D3EE', // cyan
+    '#F59E0B', // amber
+    '#34D399', // emerald
+    '#A78BFA', // violet
+    '#FB7185', // rose
+    '#4ADE80', // green
+    '#FBBF24', // yellow
+    '#60A5FA', // blue
+    '#C084FC', // purple
+    '#FB923C', // orange
+    '#14B8A6', // teal
+    '#EC4899', // fuchsia
+    '#8B5CF6', // purple
   ];
 
   // Transform allocations to chart data
   const chartData = tokenomics.allocations.map((allocation, index) => ({
     label: allocation.label,
-    value: allocation.percent,
+    value: Number(allocation.percent),
     color: colors[index % colors.length],
   }));
 
