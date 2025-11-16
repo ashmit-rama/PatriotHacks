@@ -13,11 +13,13 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from openai import OpenAI
 from json_repair import repair_json
+from dotenv import load_dotenv
 
 from .deploy_contracts import deploy_contract, DeploymentSkipped
 
 # ---------- FastAPI setup ----------
 
+load_dotenv()  # Load .env values (RPC_URL, PRIVATE_KEY, etc.) if present
 app = FastAPI()
 logger = logging.getLogger(__name__)
 

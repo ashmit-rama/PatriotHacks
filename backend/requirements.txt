@@ -5,3 +5,4 @@ openai
 web3
 py-solc-x
 json-repair
+python-dotenv
