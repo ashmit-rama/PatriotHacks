@@ -64,6 +64,39 @@
   color: var(--accent);
 }
 
+.auth-status {
+  padding: 0.85rem 1rem;
+  border-radius: 0.75rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.auth-status-success {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #10b981;
+}
+
+.auth-status-error {
+  background: rgba(248, 113, 113, 0.15);
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  color: #ef4444;
+}
+
+.auth-profile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  color: var(--text);
+}
+
+.auth-profile-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
 @media (max-width: 480px) {
   .auth-container {
     max-width: 100%;
@@ -73,4 +106,3 @@
     font-size: 1.5rem;
   }
 }
-
