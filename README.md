@@ -95,52 +95,7 @@ It explains **how to run the frontend, backend, environment variables, Supabase 
 
 ---
 
-# Kairo.ai – Web3 Project Framework Generator
-
-Multi-agent Web3 builder that generates product frameworks, tokenomics, smart-contract outlines, architecture plans, and auto-generated ZIP bundles.
-
----
-
-## Features
-
-* Multi-agent system (Framework, Tokenomics, Security, Cost)
-* React frontend with animated UI + routing
-* FastAPI backend with OpenAI integration
-* Supabase authentication (login, signup, reset password)
-* Save & load user projects
-* ZIP code generation pipeline
-* Tokenomics donut charts
-* Build history / Stored Zips dashboard
-
----
-
-# ⚙️ **Tech Stack**
-
-### **Frontend**
-
-* React + Vite / CRA
-* React Router
-* Tailwind + shadcn UI
-* LocalStorage session management
-* Tokenomics SVG donut chart
-
-### **Backend**
-
-* FastAPI
-* Python 3.10+
-* Supabase JWT verification
-* OpenAI API (GPT models)
-* ZIP code assembly pipeline
-
-### **Database / Auth**
-
-* Supabase Auth
-* Supabase Postgres
-* Supabase Storage
-
----
-
-# 🔧 **Prerequisites**
+# **Prerequisites**
 
 Make sure you have the following installed:
 
@@ -154,9 +109,9 @@ Make sure you have the following installed:
 
 ---
 
-# 📦 **Environment Variables**
+#  **Environment Variables**
 
-## 🖥️ Frontend (`.env`)
+## Frontend (`.env`)
 
 ```
 REACT_APP_API_URL=http://localhost:8000
@@ -164,7 +119,7 @@ REACT_APP_SUPABASE_URL=YOUR_SUPABASE_URL
 REACT_APP_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
 ```
 
-## 🐍 Backend (`.env`)
+## Backend (`.env`)
 
 ```
 OPENAI_API_KEY=your_openai_key
@@ -175,7 +130,7 @@ SUPABASE_JWT_SECRET=your_jwt_secret
 
 ---
 
-# ▶️ **Running the Project**
+#  **Running the Project**
 
 ## 1. Clone the repository
 
@@ -186,7 +141,7 @@ cd kairo-ai
 
 ---
 
-# 🖥️ **Frontend Setup (React)**
+# **Frontend Setup (React)**
 
 ## Install dependencies
 
@@ -203,11 +158,11 @@ npm start
 
 Your frontend will run at:
 
-👉 **[http://localhost:3000](http://localhost:3000)**
+ **[http://localhost:3000](http://localhost:3000)**
 
 ---
 
-# 🐍 **Backend Setup (FastAPI)**
+#  **Backend Setup (FastAPI)**
 
 ## Create virtual environment
 
@@ -232,11 +187,11 @@ uvicorn main:app --reload --port 8000
 
 Your backend will run at:
 
-👉 **[http://localhost:8000](http://localhost:8000)**
+**[http://localhost:8000](http://localhost:8000)**
 
 OpenAPI docs available at:
 
-👉 **[http://localhost:8000/docs](http://localhost:8000/docs)**
+**[http://localhost:8000/docs](http://localhost:8000/docs)**
 
 ---
 
