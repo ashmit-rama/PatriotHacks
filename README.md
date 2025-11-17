@@ -1,5 +1,60 @@
 # PatriotHacks
-2025 Patriot Hacks Submission
+2025 Patriot Hacks Submission - "Kairo.ai"
+
+# Architecture
+```mermaid
+sequenceDiagram
+    participant User
+    participant Web as React App (Browser)
+    participant API as FastAPI Backend
+    participant Agents as Multi-Agent Orchestrator
+    participant OpenAI as OpenAI GPT
+    participant Auth as Supabase Auth
+    participant DB as Supabase DB (projects)
+    participant Files as File Storage / ZIPs
+
+    %% Auth flow
+    User->>Web: Open app / navigate
+    User->>Web: Login / Signup form
+    Web->>Auth: /auth.login or /auth.signup
+    Auth-->>Web: JWT + user info
+    Web->>Web: Store kairo.session\nin localStorage
+
+    %% Generate framework flow
+    User->>Web: Submit "Generate Framework" form
+    Web->>API: POST /api/generate-framework\n(idea, stage, industry, auth)
+    API->>Agents: Start framework job
+    Agents->>OpenAI: Framework prompt
+    OpenAI-->>Agents: Framework result
+    Agents->>OpenAI: Tokenomics analysis (optional)
+    OpenAI-->>Agents: Tokenomics result
+    Agents->>OpenAI: Security analysis
+    OpenAI-->>Agents: Security report
+    Agents->>OpenAI: Cost analysis
+    OpenAI-->>Agents: Cost estimates
+    Agents-->>API: MultiAgentResult\n(framework, tokenomics, security, cost)
+    API-->>Web: JSON result
+    Web-->>User: Show framework cards,\ncharts and summaries
+
+    %% Save project
+    User->>Web: Click "Save Project"
+    Web->>API: POST /api/projects
+    API->>DB: INSERT project
+    DB-->>API: Saved project id
+    API-->>Web: Project metadata
+    Web-->>User: Update projects list\n(success toast)
+
+    %% Download ZIP
+    User->>Web: Click "Download ZIP"
+    Web->>API: POST /api/generate-zip
+    API->>OpenAI: Code generation prompts
+    OpenAI-->>API: Generated code files
+    API->>Files: Create ZIP
+    Files-->>API: ZIP bytes / location
+    API-->>Web: ZIP download response
+    Web-->>User: Browser downloads ZIP
+
+```
 
 # Web3 Framework Generator
 
