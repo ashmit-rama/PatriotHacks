@@ -8,7 +8,84 @@
   margin: 0 auto;
 }
 
-/* Two-column layout */
+/* Centered Input Container */
+.build-input-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  margin-top: 2rem;
+  padding: 0 1rem;
+}
+
+.build-input-container .input-panel-card {
+  width: 100%;
+  max-width: 42rem; /* max-w-2xl equivalent */
+  margin: 0 auto;
+}
+
+/* Results Container */
+.build-results-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  margin-top: 2rem;
+  width: 100%;
+}
+
+/* Project Overview Section - Always Full Width */
+.project-overview-section {
+  width: 100%;
+}
+
+/* Middle Section - Conditional Layout */
+.build-results-middle-tokenomics {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 2rem;
+  align-items: start;
+}
+
+.build-framework-cards-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.build-framework-cards-full {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+.framework-sections-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+  width: 100%;
+}
+
+/* Bottom Actions Section */
+.build-actions-section {
+  width: 100%;
+  margin-top: 2rem;
+}
+
+.build-actions-row {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.build-actions-row .save-project-button,
+.build-actions-row .download-cta-button {
+  flex: 1;
+  min-width: 200px;
+}
+
+/* Legacy classes for backward compatibility */
 .build-layout {
   display: grid;
   grid-template-columns: 38% 62%;
@@ -25,7 +102,6 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
-/* Input Panel */
 .build-input-panel {
   position: sticky;
   top: 80px;
@@ -344,8 +420,6 @@
 }
 
 .build-tokenomics-panel {
-  position: sticky;
-  top: 80px;
   display: flex;
   flex-direction: column;
 }
@@ -419,6 +493,15 @@
 
 /* Responsive */
 @media (max-width: 1024px) {
+  .build-results-middle-tokenomics {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+
+  .framework-sections-grid {
+    grid-template-columns: 1fr;
+  }
+
   .build-layout {
     grid-template-columns: 1fr;
     gap: 2rem;
@@ -428,7 +511,10 @@
     grid-template-columns: 1fr;
   }
   
-  .build-input-panel,
+  .build-input-panel {
+    position: static;
+  }
+  
   .build-tokenomics-panel {
     position: static;
   }
@@ -442,9 +528,34 @@
     gap: 0.75rem;
   }
 
+  .build-actions-row {
+    flex-direction: column;
+  }
+
+  .build-actions-row .save-project-button,
+  .build-actions-row .download-cta-button {
+    width: 100%;
+    min-width: unset;
+  }
+
   /* On mobile, when generated, show tokenomics first */
   .build-layout-generated .build-tokenomics-panel {
     order: -1;
+  }
+}
+
+@media (max-width: 768px) {
+  .build-input-container {
+    padding: 0 0.5rem;
+  }
+
+  .build-results-container {
+    gap: 1.5rem;
+  }
+
+  .framework-sections-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
   }
 }
 

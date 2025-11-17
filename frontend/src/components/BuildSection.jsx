@@ -11,6 +11,51 @@ import { TokenomicsSection } from './TokenomicsSection';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
+// Default tokenomics data
+const DEFAULT_TOKENOMICS = {
+  tokenSymbol: 'W3C',
+  allocations: [
+    {
+      id: 'community',
+      label: 'Community Rewards & Incentives',
+      percent: 35,
+      description:
+        'Rewards for early users, liquidity mining, referral programs, and rental activity incentives.',
+    },
+    {
+      id: 'treasury',
+      label: 'Protocol Treasury',
+      percent: 25,
+      description: 'Long-term ecosystem development, partnerships, grants, and maintenance.',
+    },
+    {
+      id: 'team',
+      label: 'Core Team',
+      percent: 18,
+      description: 'Founders and team with multi-year vesting to align incentives.',
+    },
+    {
+      id: 'investors',
+      label: 'Investors & Strategic Partners',
+      percent: 12,
+      description: 'Seed and future funding rounds with vesting and lockups.',
+    },
+    {
+      id: 'liquidity',
+      label: 'DEX/CEX Liquidity',
+      percent: 5,
+      description: 'Liquidity pools on decentralized exchanges and market making.',
+    },
+    {
+      id: 'advisors',
+      label: 'Advisors',
+      percent: 5,
+      description: 'Key advisors and industry experts with vesting schedules.',
+    },
+  ],
+  healthSummary: 'Balanced distribution supporting community growth, long-term runway, and aligned incentives.',
+};
+
 // Icons for sections
 const SectionIcons = {
   components: (
@@ -83,86 +128,71 @@ const BuildSection = ({ agentResult, setAgentResult, onProjectSaved, session }) 
   const [deploymentErrorMsg, setDeploymentErrorMsg] = useState('');
   const [deploymentStatus, setDeploymentStatus] = useState('idle'); // idle | pending | success | error | skipped | none
 
-  const DEFAULT_TOKENOMICS = {
-    tokenSymbol: 'W3C',
-    allocations: [
-      {
-        id: 'community',
-        label: 'Community Rewards & Incentives',
-        percent: 35,
-        description:
-          'Rewards for early users, liquidity mining, referral programs, and rental activity incentives.',
-      },
-      {
-        id: 'treasury',
-        label: 'Protocol Treasury',
-        percent: 25,
-        description: 'Long-term ecosystem development, partnerships, grants, and maintenance.',
-      },
-      {
-        id: 'team',
-        label: 'Core Team',
-        percent: 18,
-        description: 'Founders and team with multi-year vesting to align incentives.',
-      },
-      {
-        id: 'investors',
-        label: 'Investors & Strategic Partners',
-        percent: 12,
-        description: 'Seed and future funding rounds with vesting and lockups.',
-      },
-      {
-        id: 'liquidity',
-        label: 'DEX/CEX Liquidity',
-        percent: 5,
-        description: 'Liquidity pools on decentralized exchanges and market making.',
-      },
-      {
-        id: 'advisors',
-        label: 'Advisors',
-        percent: 5,
-        description: 'Key advisors and industry experts with vesting schedules.',
-      },
-    ],
-    healthSummary: 'Balanced distribution supporting community growth, long-term runway, and aligned incentives.',
-  };
-
   const mapTokenomics = (rawTokenomics) => {
-    if (!rawTokenomics || typeof rawTokenomics !== 'object') {
+    // Handle null, undefined, or non-object input
+    if (!rawTokenomics || typeof rawTokenomics !== 'object' || Array.isArray(rawTokenomics)) {
       return null;
     }
 
-    const allocations = Array.isArray(rawTokenomics.allocations)
-      ? rawTokenomics.allocations
-          .map((allocation, idx) => ({
-            id:
-              allocation.id ||
-              (allocation.label
-                ? allocation.label.toLowerCase().replace(/\s+/g, '-')
-                : `allocation-${idx}`),
-            label: allocation.label || `Allocation ${idx + 1}`,
-            percent: Number(allocation.percent) || 0,
-            description: allocation.description || '',
-          }))
-          .filter((slice) => slice.percent > 0)
-      : [];
+    // Normalize allocations array - handle various field name variations
+    let allocations = [];
+    if (Array.isArray(rawTokenomics.allocations)) {
+      allocations = rawTokenomics.allocations
+        .filter((allocation) => allocation && typeof allocation === 'object')
+        .map((allocation, idx) => {
+          // Handle different percentage field names: percent, percentage, value
+          const percentValue = Number(
+            allocation.percent || allocation.percentage || allocation.value || 0
+          );
 
+          // Generate ID from label, allocation_name, or index
+          const labelText =
+            allocation.label || allocation.allocation_name || allocation.name || '';
+          const id =
+            allocation.id ||
+            (labelText
+              ? labelText.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+              : `allocation-${idx}`);
+
+          return {
+            id,
+            label: labelText || `Allocation ${idx + 1}`,
+            percent: percentValue,
+            description:
+              allocation.description ||
+              allocation.desc ||
+              allocation.summary ||
+              '',
+          };
+        })
+        .filter((slice) => slice.percent > 0);
+    }
+
+    // Return null if no valid allocations found
     if (!allocations.length) {
       return null;
     }
 
+    // Normalize token symbol - handle various field names
+    const tokenSymbol =
+      rawTokenomics.tokenSymbol ||
+      rawTokenomics.token_symbol ||
+      rawTokenomics.symbol ||
+      rawTokenomics.token ||
+      'W3C';
+
+    // Normalize health summary - handle various field names
+    const healthSummary =
+      rawTokenomics.healthSummary ||
+      rawTokenomics.health_summary ||
+      rawTokenomics.summary ||
+      rawTokenomics.ai_summary ||
+      null;
+
     return {
-      tokenSymbol: (
-        rawTokenomics.tokenSymbol ||
-        rawTokenomics.token_symbol ||
-        rawTokenomics.symbol ||
-        'W3C'
-      )
-        .slice(0, 6)
-        .toUpperCase(),
+      tokenSymbol: String(tokenSymbol).slice(0, 6).toUpperCase(),
       allocations,
-      healthSummary:
-        rawTokenomics.healthSummary || rawTokenomics.health_summary || rawTokenomics.summary,
+      healthSummary,
     };
   };
 
@@ -231,7 +261,7 @@ const BuildSection = ({ agentResult, setAgentResult, onProjectSaved, session }) 
     return () => {
       isMounted = false;
     };
-  }, [projectId, session?.access_token]);
+  }, [projectId, session?.access_token, setAgentResult]);
 
   // Save project modal state
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -544,13 +574,8 @@ const BuildSection = ({ agentResult, setAgentResult, onProjectSaved, session }) 
 
   // ---------- JSX ----------
 
-  const layoutClasses = ['build-layout'];
-  if (hasGenerated) {
-    layoutClasses.push('build-layout-generated');
-    if (!tokenomics) {
-      layoutClasses.push('build-layout-full');
-    }
-  }
+  // Determine if tokenomics exists
+  const hasTokenomics = Boolean(tokenomics && tokenomics.allocations && tokenomics.allocations.length > 0);
 
   return (
     <section className="build-section">
@@ -572,93 +597,73 @@ const BuildSection = ({ agentResult, setAgentResult, onProjectSaved, session }) 
           }
         />
 
-        <div className={layoutClasses.join(' ')}>
-          {/* Left: input panel OR tokenomics */}
-          {!hasGenerated ? (
-            <div className="build-input-panel">
-              <Card className="input-panel-card" padding="lg">
-                <h3 className="input-panel-heading">Your Web3 Idea</h3>
-                <p className="input-panel-helper">
-                  Describe your project and we'll generate a complete Web3 blueprint.
-                </p>
+        {/* Generate Framework Input Area - Centered and Polished */}
+        {!hasGenerated ? (
+          <div className="build-input-container">
+            <Card className="input-panel-card" padding="lg">
+              <h3 className="input-panel-heading">Your Web3 Idea</h3>
+              <p className="input-panel-helper">
+                Describe your project and we'll generate a complete Web3 blueprint.
+              </p>
 
-                <form onSubmit={handleGenerateFramework} className="build-form">
+              <form onSubmit={handleGenerateFramework} className="build-form">
+                <div className="form-group">
+                  <label className="form-label">Your Website Request</label>
+                  <textarea
+                    value={idea}
+                    onChange={(e) => setIdea(e.target.value)}
+                    rows={6}
+                    className="form-textarea"
+                    placeholder="Describe what you want for your website..."
+                  />
+                </div>
+
+                <div className="form-row">
                   <div className="form-group">
-                    <label className="form-label">Your Website Request</label>
-                    <textarea
-                      value={idea}
-                      onChange={(e) => setIdea(e.target.value)}
-                      rows={6}
-                      className="form-textarea"
-                      placeholder="Describe what you want for your website..."
+                    <label className="form-label">Stage</label>
+                    <select
+                      value={stage}
+                      onChange={(e) => setStage(e.target.value)}
+                      className="form-select"
+                    >
+                      <option value="new">New Idea</option>
+                      <option value="existing">Established</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Industry (optional)</label>
+                    <input
+                      type="text"
+                      value={industry}
+                      onChange={(e) => setIndustry(e.target.value)}
+                      placeholder="e.g., events, gaming, finance"
+                      className="form-input"
                     />
                   </div>
-
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label className="form-label">Stage</label>
-                      <select
-                        value={stage}
-                        onChange={(e) => setStage(e.target.value)}
-                        className="form-select"
-                      >
-                        <option value="new">New Idea</option>
-                        <option value="existing">Established</option>
-                      </select>
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Industry (optional)</label>
-                      <input
-                        type="text"
-                        value={industry}
-                        onChange={(e) => setIndustry(e.target.value)}
-                        placeholder="e.g., events, gaming, finance"
-                        className="form-input"
-                      />
-                    </div>
-                  </div>
-
-                  {error && <div className="error-message">{error}</div>}
-
-                  <div className="form-actions">
-                    <Button
-                      type="submit"
-                      disabled={loadingFramework}
-                      loading={loadingFramework}
-                      variant="primary"
-                      size="lg"
-                    >
-                      Generate Framework
-                    </Button>
-                  </div>
-                </form>
-              </Card>
-            </div>
-          ) : tokenomics ? (
-            <div className="build-tokenomics-panel">
-              <Card className="tokenomics-card" padding="lg">
-                <div className="tokenomics-header">
-                  {SectionIcons.tokenomics}
-                  <h3 className="tokenomics-title">Tokenomics Overview</h3>
                 </div>
-                <p className="tokenomics-subtitle">
-                  Supply split by allocation (100% = total token supply).
-                </p>
-                <TokenomicsSection
-                  tokenSymbol={tokenomics.tokenSymbol}
-                  slices={tokenomics.allocations}
-                  healthSummary={tokenomics.healthSummary}
-                />
-              </Card>
-            </div>
-          ) : null}
 
-          {/* Right: output panel */}
-          <div className="build-output-panel">
-            {framework ? (
-              <div className="output-container">
-                {/* Project Summary */}
+                {error && <div className="error-message">{error}</div>}
+
+                <div className="form-actions">
+                  <Button
+                    type="submit"
+                    disabled={loadingFramework}
+                    loading={loadingFramework}
+                    variant="primary"
+                    size="lg"
+                  >
+                    Generate Framework
+                  </Button>
+                </div>
+              </form>
+            </Card>
+          </div>
+        ) : (
+          <div className="build-results-container">
+            {/* Project Overview - Always at Top, Full Width */}
+            {framework && (
+              <div className="project-overview-section">
                 <Card className="summary-card" padding="lg">
                   <h3 className="summary-title">Project Summary</h3>
                   <p className="summary-text">{framework.summary}</p>
@@ -807,55 +812,282 @@ const BuildSection = ({ agentResult, setAgentResult, onProjectSaved, session }) 
                     </div>
                   )}
                 </Card>
+              </div>
+            )}
 
-                {/* Sections */}
-                <div className="framework-sections">
+            {/* Middle Section - Conditional Layout Based on Tokenomics */}
+            {framework && (
+              hasTokenomics ? (
+                /* Case A: Tokenomics exists - 2-column layout */
+                <div className="build-results-middle-tokenomics">
+                {/* Left: Tokenomics */}
+                <div className="build-tokenomics-panel">
+                  <Card className="tokenomics-card" padding="lg">
+                    <div className="tokenomics-header">
+                      {SectionIcons.tokenomics}
+                      <h3 className="tokenomics-title">Tokenomics Overview</h3>
+                    </div>
+                    <p className="tokenomics-subtitle">
+                      Supply split by allocation (100% = total token supply).
+                    </p>
+                    {tokenomics && tokenomics.allocations && tokenomics.allocations.length > 0 ? (
+                      <TokenomicsSection
+                        tokenSymbol={tokenomics.tokenSymbol || 'W3C'}
+                        slices={tokenomics.allocations || []}
+                        healthSummary={tokenomics.healthSummary || null}
+                      />
+                    ) : null}
+                  </Card>
+                </div>
+
+                {/* Right: Framework Cards */}
+                <div className="build-framework-cards-column">
+                  <div className="framework-sections">
+                    {renderSectionCard(
+                      'Frontend Components',
+                      SectionIcons.components,
+                      framework.frontend_components,
+                      true,
+                      false
+                    )}
+                    {renderSectionCard(
+                      'User Segments',
+                      SectionIcons.users,
+                      framework.user_segments,
+                      true,
+                      false
+                    )}
+                    {renderSectionCard(
+                      'Value Proposition',
+                      SectionIcons.value,
+                      framework.value_proposition,
+                      true,
+                      false
+                    )}
+                    {renderSectionCard(
+                      'Smart Contracts',
+                      SectionIcons.contracts,
+                      framework.smart_contracts,
+                      true,
+                      false
+                    )}
+                    {renderSectionCard(
+                      'Backend Services',
+                      SectionIcons.backend,
+                      framework.backend_services,
+                      true,
+                      false
+                    )}
+                    {renderSectionCard(
+                      'Web3 Integration Focus',
+                      SectionIcons.web3,
+                      framework.web3_integration,
+                      true,
+                      false
+                    )}
+                    {renderSectionCard(
+                      'Suggested Next Steps',
+                      SectionIcons.nextSteps,
+                      framework.next_steps,
+                      true,
+                      false
+                    )}
+                  </div>
+
+                  {/* Security Overview */}
+                  {securityAgent && (
+                    <Card className="security-card" padding="lg">
+                      <h3 className="summary-title">Security Overview</h3>
+                      <p className="summary-text">
+                        Risk level:{' '}
+                        <strong>
+                          {(securityAgent.output.risk_level || 'unknown').toUpperCase()}
+                        </strong>
+                      </p>
+
+                      {securityAgent.output.critical_issues &&
+                        securityAgent.output.critical_issues.length > 0 && (
+                          <div className="security-section">
+                            <h4 className="section-card-title">Critical Issues</h4>
+                            <ul className="section-list">
+                              {securityAgent.output.critical_issues.map((item, idx) => (
+                                <li key={idx} className="section-list-item">
+                                  {item}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                      {securityAgent.output.warnings &&
+                        securityAgent.output.warnings.length > 0 && (
+                          <div className="security-section">
+                            <h4 className="section-card-title">Warnings</h4>
+                            <ul className="section-list">
+                              {securityAgent.output.warnings.map((item, idx) => (
+                                <li key={idx} className="section-list-item">
+                                  {item}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                      {securityAgent.output.recommendations &&
+                        securityAgent.output.recommendations.length > 0 && (
+                          <div className="security-section">
+                            <h4 className="section-card-title">Recommendations</h4>
+                            <ul className="section-list">
+                              {securityAgent.output.recommendations.map((item, idx) => (
+                                <li key={idx} className="section-list-item">
+                                  {item}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                    </Card>
+                  )}
+
+                  {/* Cost Overview */}
+                  {costAgent && (
+                    <Card className="cost-card" padding="lg">
+                      <h3 className="summary-title">Cost Overview</h3>
+                      <p className="summary-text">
+                        Chain: <strong>{costAgent.output.chain || 'Unknown'}</strong>
+                      </p>
+
+                      {costAgent.output.assumptions &&
+                        costAgent.output.assumptions.length > 0 && (
+                          <div className="security-section">
+                            <h4 className="section-card-title">Assumptions</h4>
+                            <ul className="section-list">
+                              {costAgent.output.assumptions.map((item, idx) => (
+                                <li key={idx} className="section-list-item">
+                                  {item}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                      <div className="cost-grid">
+                        <div className="cost-block">
+                          <h4 className="section-card-title">Contract Deploy (mainnet)</h4>
+                          <p className="summary-text">
+                            {(costAgent.output.contract_deploy_cost_estimate &&
+                              costAgent.output.contract_deploy_cost_estimate.currency) ||
+                              'USD'}{' '}
+                            {costAgent.output.contract_deploy_cost_estimate &&
+                            costAgent.output.contract_deploy_cost_estimate.mainnet != null
+                              ? costAgent.output.contract_deploy_cost_estimate.mainnet
+                              : 'N/A'}
+                          </p>
+                          <p className="summary-helper">
+                            Testnet cost is basically{' '}
+                            {costAgent.output.contract_deploy_cost_estimate &&
+                            costAgent.output.contract_deploy_cost_estimate.testnet != null
+                              ? costAgent.output.contract_deploy_cost_estimate.testnet
+                              : 0}{' '}
+                            (faucet / play money).
+                          </p>
+                        </div>
+
+                        <div className="cost-block">
+                          <h4 className="section-card-title">Monthly Infra Estimate</h4>
+                          <p className="summary-text">
+                            Low:{' '}
+                            {(costAgent.output.monthly_infra_cost_estimate &&
+                              costAgent.output.monthly_infra_cost_estimate.currency) ||
+                              'USD'}{' '}
+                            {costAgent.output.monthly_infra_cost_estimate &&
+                            costAgent.output.monthly_infra_cost_estimate.low != null
+                              ? costAgent.output.monthly_infra_cost_estimate.low
+                              : '?'}
+                          </p>
+                          <p className="summary-text">
+                            Medium:{' '}
+                            {(costAgent.output.monthly_infra_cost_estimate &&
+                              costAgent.output.monthly_infra_cost_estimate.currency) ||
+                              'USD'}{' '}
+                            {costAgent.output.monthly_infra_cost_estimate &&
+                            costAgent.output.monthly_infra_cost_estimate.medium != null
+                              ? costAgent.output.monthly_infra_cost_estimate.medium
+                              : '?'}
+                          </p>
+                          <p className="summary-text">
+                            High:{' '}
+                            {(costAgent.output.monthly_infra_cost_estimate &&
+                              costAgent.output.monthly_infra_cost_estimate.currency) ||
+                              'USD'}{' '}
+                            {costAgent.output.monthly_infra_cost_estimate &&
+                            costAgent.output.monthly_infra_cost_estimate.high != null
+                              ? costAgent.output.monthly_infra_cost_estimate.high
+                              : '?'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {costAgent.output.notes && (
+                        <div className="security-section">
+                          <h4 className="section-card-title">Notes</h4>
+                          <p className="summary-text">{costAgent.output.notes}</p>
+                        </div>
+                      )}
+                    </Card>
+                  )}
+                </div>
+              </div>
+              ) : (
+                /* Case B: No tokenomics - Full width grid */
+                <div className="build-framework-cards-full">
+                <div className="framework-sections-grid">
                   {renderSectionCard(
                     'Frontend Components',
                     SectionIcons.components,
-                    framework.frontend_components,
+                    framework?.frontend_components,
                     true,
                     false
                   )}
                   {renderSectionCard(
                     'User Segments',
                     SectionIcons.users,
-                    framework.user_segments,
+                    framework?.user_segments,
                     true,
                     false
                   )}
                   {renderSectionCard(
                     'Value Proposition',
                     SectionIcons.value,
-                    framework.value_proposition,
+                    framework?.value_proposition,
                     true,
                     false
                   )}
                   {renderSectionCard(
                     'Smart Contracts',
                     SectionIcons.contracts,
-                    framework.smart_contracts,
+                    framework?.smart_contracts,
                     true,
                     false
                   )}
                   {renderSectionCard(
                     'Backend Services',
                     SectionIcons.backend,
-                    framework.backend_services,
+                    framework?.backend_services,
                     true,
                     false
                   )}
                   {renderSectionCard(
                     'Web3 Integration Focus',
                     SectionIcons.web3,
-                    framework.web3_integration,
+                    framework?.web3_integration,
                     true,
                     false
                   )}
                   {renderSectionCard(
                     'Suggested Next Steps',
                     SectionIcons.nextSteps,
-                    framework.next_steps,
+                    framework?.next_steps,
                     true,
                     false
                   )}
@@ -1003,8 +1235,13 @@ const BuildSection = ({ agentResult, setAgentResult, onProjectSaved, session }) 
                     )}
                   </Card>
                 )}
+              </div>
+              )
+            )}
 
-                {/* Actions: Save Project + Download */}
+            {/* Bottom Section - Generate + Save Buttons */}
+            {framework && (
+              <div className="build-actions-section">
                 <Card className="download-cta-card" padding="lg">
                   <p className="download-cta-text">
                     Ready to build? Download the starter frontend, backend, and contracts in one zip.
@@ -1039,17 +1276,9 @@ const BuildSection = ({ agentResult, setAgentResult, onProjectSaved, session }) 
                   </div>
                 </Card>
               </div>
-            ) : (
-              <Card padding="xl" className="results-empty">
-                <div className="results-empty-content">
-                  <p className="results-empty-text">
-                    Generate a framework to see results here
-                  </p>
-                </div>
-              </Card>
             )}
           </div>
-        </div>
+        )}
       </div>
       
       {/* Save Project Modal */}

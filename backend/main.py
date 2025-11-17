@@ -27,6 +27,13 @@ try:
         SUPABASE_URL,
         SUPABASE_ANON_KEY,
     )
+except ImportError:
+    from supabase_client import (
+        supabase_client,
+        supabase_db_client,
+        SUPABASE_URL,
+        SUPABASE_ANON_KEY,
+    )
     # Log status for debugging
     if not supabase_client:
         print("⚠️  Supabase client is None - authentication endpoints will be disabled")
@@ -49,7 +56,10 @@ except Exception as e:
     SUPABASE_URL = None
     SUPABASE_ANON_KEY = None
 
-from .deploy_contracts import deploy_contract, DeploymentSkipped
+try:
+    from .deploy_contracts import deploy_contract, DeploymentSkipped
+except ImportError:
+    from deploy_contracts import deploy_contract, DeploymentSkipped
 
 
 # ---------- FastAPI setup ----------

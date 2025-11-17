@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { TokenomicsPieChart, TokenomicsLegend } from './ui/TokenomicsPieChart';
 
 export const TokenomicsSection = ({
   title = 'Tokenomics Overview',
@@ -6,78 +7,104 @@ export const TokenomicsSection = ({
   slices = [],
   healthSummary,
 }) => {
-  if (!slices.length) return null;
+  const [hoveredIndex, setHoveredIndex] = useState(null);
+  const [chartSize, setChartSize] = useState(320);
 
-  const colors = ['#6366F1', '#F472B6', '#22D3EE', '#F59E0B', '#34D399', '#A78BFA'];
-  let runningOffset = 0;
+  // Responsive chart size
+  useEffect(() => {
+    const updateChartSize = () => {
+      setChartSize(window.innerWidth >= 1024 ? 320 : window.innerWidth >= 640 ? 280 : 240);
+    };
+    updateChartSize();
+    window.addEventListener('resize', updateChartSize);
+    return () => window.removeEventListener('resize', updateChartSize);
+  }, []);
+
+  // Early return if no valid slices data
+  if (!slices || !Array.isArray(slices) || slices.length === 0) {
+    return null;
+  }
+
+  // Web3-themed color palette matching the pie chart
+  const colors = [
+    '#6366F1', // indigo
+    '#8B5CF6', // purple
+    '#A78BFA', // violet
+    '#C084FC', // purple-light
+    '#22D3EE', // cyan
+    '#06B6D4', // cyan-dark
+    '#34D399', // emerald
+    '#10B981', // emerald-dark
+    '#F59E0B', // amber
+    '#F97316', // orange
+    '#EC4899', // pink
+    '#F472B6', // pink-light
+    '#14B8A6', // teal
+    '#60A5FA', // blue
+  ];
+
+  // Transform slices data to match pie chart format with validation
+  const chartData = slices
+    .filter((slice) => slice && (slice.percent || slice.percentage || slice.value))
+    .map((slice, index) => {
+      // Handle different percentage field names: percent, percentage, value
+      const percent = Number(slice.percent || slice.percentage || slice.value || 0);
+      return {
+        id: slice.id || `slice-${index}`,
+        label: slice.label || `Allocation ${index + 1}`,
+        value: percent,
+        description: slice.description || '',
+        color: colors[index % colors.length],
+      };
+    })
+    .filter((item) => item.value > 0);
+
+  // If no valid chart data after filtering, don't render
+  if (!chartData.length) return null;
+
+  const handleItemHover = (index) => {
+    setHoveredIndex(index);
+  };
+
+  const handleItemLeave = () => {
+    setHoveredIndex(null);
+  };
 
   return (
-    <div className="mt-6 rounded-2xl border border-slate-700 bg-slate-900/60 p-5 shadow-lg shadow-black/30">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <p className="text-xs uppercase tracking-widest text-slate-400">Tokenomics</p>
-          <h4 className="text-xl font-semibold text-slate-100">{title}</h4>
-        </div>
-        <div className="rounded-full border border-slate-600 bg-slate-800 px-3 py-1 text-xs font-semibold tracking-wide text-slate-200">
-          {tokenSymbol}
+    <div className="w-full">
+      {/* Chart and Legend Container - Side by Side */}
+      <div className="mb-8">
+        <div className="flex flex-col md:flex-row items-center md:items-start justify-center gap-8 md:gap-10 lg:gap-12">
+          {/* Donut Chart - Left side */}
+          <div className="flex items-center justify-center flex-shrink-0">
+            <TokenomicsPieChart
+              data={chartData}
+              size={chartSize}
+              hoveredIndex={hoveredIndex}
+              onSliceHover={setHoveredIndex}
+              onSliceLeave={handleItemLeave}
+            />
+          </div>
+
+          {/* Legend - Right side */}
+          <div className="flex items-start justify-start w-full md:w-auto md:min-w-[280px]">
+            <TokenomicsLegend
+              data={chartData}
+              hoveredIndex={hoveredIndex}
+              onItemHover={handleItemHover}
+              onItemLeave={handleItemLeave}
+            />
+          </div>
         </div>
       </div>
 
-      <div className="mb-4 mt-6">
-        <div className="relative h-3 w-full overflow-hidden rounded-full bg-slate-800">
-          {slices.map((slice, index) => {
-            const color = colors[index % colors.length];
-            const width = Math.max(0, Math.min(100, slice.percent));
-            const segment = (
-              <div
-                key={`${slice.id}-segment`}
-                className="absolute top-0 h-full"
-                style={{
-                  left: `${runningOffset}%`,
-                  width: `${width}%`,
-                  backgroundColor: color,
-                }}
-              />
-            );
-            runningOffset += width;
-            return segment;
-          })}
-        </div>
-        <p className="mt-2 text-[11px] text-slate-400">
-          Supply split by allocation (100% = total token supply).
-        </p>
-      </div>
-
-      <div className="mt-6 grid gap-3 sm:grid-cols-2">
-        {slices.map((slice, index) => {
-          const color = colors[index % colors.length];
-          return (
-            <div
-              key={slice.id}
-              className="rounded-xl border border-slate-800/70 bg-slate-900/40 p-4 transition hover:border-slate-600/80"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-slate-200">{slice.label}</span>
-                <span className="text-2xl font-bold text-slate-100">{slice.percent}%</span>
-              </div>
-              <div className="mt-2 flex items-start gap-2 text-sm text-slate-400">
-                <span
-                  className="mt-1 inline-block h-2.5 w-2.5 flex-shrink-0 rounded-full"
-                  style={{ backgroundColor: color }}
-                />
-                <p>{slice.description}</p>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
+      {/* AI Summary Section */}
       {healthSummary && (
-        <div className="mt-6 rounded-xl border border-slate-800/80 bg-slate-900/50 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-            AI Summary
+        <div className="mt-10 pt-8 border-t border-slate-700/60">
+          <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">
+            Summary
           </p>
-          <p className="mt-1 text-sm text-slate-300">{healthSummary}</p>
+          <p className="text-sm font-medium font-semibold leading-relaxed text-slate-200">{healthSummary}</p>
         </div>
       )}
     </div>
