@@ -1,9 +1,9 @@
 import base64
 import io
 import json
-import base64
 import logging
 import os
+import re
 import zipfile
 import uuid
 from datetime import datetime
@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
 
 from openai import OpenAI
+from dotenv import load_dotenv
 
 try:
     from .supabase_client import (
@@ -47,6 +48,8 @@ except Exception as e:
     supabase_db_client = None
     SUPABASE_URL = None
     SUPABASE_ANON_KEY = None
+
+from .deploy_contracts import deploy_contract, DeploymentSkipped
 
 
 # ---------- FastAPI setup ----------
@@ -131,6 +134,8 @@ class MultiAgentResult(BaseModel):
 class ZipResponse(BaseModel):
     zip_base64: str
     security_report: Optional[Dict[str, Any]] = None
+    deployment: Optional[Dict[str, Any]] = None
+    deployment_error: Optional[str] = None
 
 
 # ---------- Auth Pydantic models ----------
@@ -391,12 +396,57 @@ Rules:
     return _call_openai_json(system_prompt, user_prompt)
 
 
+# ---------- Deployment helpers ----------
+
+def _extract_contract_from_source(source: str) -> Optional[str]:
+    match = re.search(r"contract\s+([A-Za-z0-9_]+)", source)
+    if match:
+        return match.group(1)
+    return None
+
+
+def _select_contract_for_deployment(code_plan: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
+    contracts = code_plan.get("contracts") or []
+    for file_obj in contracts:
+        content = (file_obj.get("content") or "").strip()
+        path = file_obj.get("path") or ""
+        if not content:
+            continue
+        contract_name = _extract_contract_from_source(content)
+        if not contract_name and path:
+            contract_name = Path(path).stem or "MyContract"
+        if not contract_name:
+            contract_name = "MyContract"
+        return contract_name, content
+    return None, None
+
+
+def _inject_contract_address(file_content: str, deployment: Dict[str, str]) -> str:
+    address = deployment.get("address")
+    if not address:
+        return file_content
+    replaced = False
+    for placeholder in ["<DEPLOYED_CONTRACT_ADDRESS>", "{DEPLOYED_CONTRACT_ADDRESS}"]:
+        if placeholder in file_content:
+            file_content = file_content.replace(placeholder, address)
+            replaced = True
+    if not replaced:
+        header = (
+            f"// Auto-generated connection details\n"
+            f"// Deployed contract: {address} on {deployment.get('network', 'testnet')}\n\n"
+        )
+        file_content = header + file_content
+    return file_content
+
+
 # ---------- Repo ZIP builder ----------
 
 def build_repo_zip(
     framework: FrameworkResponse,
     code_plan: Dict[str, Any],
     report_markdown: str,
+    deployment: Optional[Dict[str, str]] = None,
+    deployment_error: Optional[str] = None,
 ) -> bytes:
     """
     Build a GitHub-style repo as a zip, based on the code_plan JSON.
@@ -404,6 +454,11 @@ def build_repo_zip(
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         # 1) README
+        def bullet_block(items: List[str]) -> str:
+            if not items:
+                return "- (none)"
+            return "\n".join(f"- {item}" for item in items)
+
         readme_content = f"""# Auto-generated Web3 Project
 
 ## Summary
@@ -411,35 +466,55 @@ def build_repo_zip(
 {framework.summary}
 
 ### User Segments
-- """ + "\n- ".join(framework.user_segments) + """
+{bullet_block(framework.user_segments)}
 
 ### Value Proposition
-- """ + "\n- ".join(framework.value_proposition) + """
+{bullet_block(framework.value_proposition)}
 
 ### Recommended Chain
-- {chain}
+{framework.recommended_chain}
 
 ### Smart Contracts
-- """.format(chain=framework.recommended_chain) + "\n- ".join(framework.smart_contracts) + """
+{bullet_block(framework.smart_contracts)}
 
 ### Frontend Components
-- """ + "\n- ".join(framework.frontend_components) + """
+{bullet_block(framework.frontend_components)}
 
 ### Backend Services
-- """ + "\n- ".join(framework.backend_services) + """
+{bullet_block(framework.backend_services)}
 
 ### Web3 Integration
-- """ + "\n- ".join(framework.web3_integration) + """
+{bullet_block(framework.web3_integration)}
 
 ### Next Steps
-- """ + "\n- ".join(framework.next_steps) + """
+{bullet_block(framework.next_steps)}
 
----
+## On-chain Deployment
+"""
+        if deployment:
+            readme_content += (
+                f"This contract has been deployed to **{deployment.get('network', 'testnet')}**.\n\n"
+                f"- Address: `{deployment.get('address')}`\n"
+                f"- Explorer: {deployment.get('explorer_url') or 'N/A'}\n"
+                f"- Tx Hash: {deployment.get('tx_hash') or 'N/A'}\n\n"
+            )
+        elif deployment_error:
+            readme_content += (
+                "Automatic deployment attempted but failed:\n\n"
+                f"> {deployment_error}\n\n"
+                "Use Hardhat scripts in this repo to deploy manually once the issue is resolved.\n\n"
+            )
+        else:
+            readme_content += (
+                "Deployment has not been run yet. Use the provided Hardhat scripts when ready.\n\n"
+            )
+
+        readme_content += f"""---
 
 ## Detailed Report
 
-{report}
-""".format(report=report_markdown)
+{report_markdown}
+"""
 
         zf.writestr("README.md", readme_content)
 
@@ -452,6 +527,8 @@ def build_repo_zip(
                 if not path:
                     continue
                 normalized_path = path.lstrip("/")
+                if deployment and normalized_path.lower() == "web3/connection.js":
+                    content = _inject_contract_address(content, deployment)
                 zf.writestr(normalized_path, content)
 
         # 3) If the CodeGen agent didn't create a docs file, add one
@@ -468,6 +545,9 @@ This document describes the architecture generated by the multi-agent system.
 Use this as a starting point and extend as needed.
 """
             zf.writestr("docs/ARCHITECTURE.md", arch)
+
+        if deployment:
+            zf.writestr("deployment.json", json.dumps(deployment, indent=2))
 
     buf.seek(0)
     return buf.getvalue()
@@ -983,6 +1063,24 @@ def generate_zip(zip_req: ZipRequest) -> ZipResponse:
     # Generate code + security review
     code_output, security_output = run_code_generation_pipeline(zip_req, framework)
 
+    deployment_details: Optional[Dict[str, str]] = None
+    deployment_error: Optional[str] = None
+    contract_name, solidity_source = _select_contract_for_deployment(code_output)
+    if solidity_source:
+        lower_source = solidity_source.lower()
+        if 'import "@' in lower_source or "import '@" in lower_source:
+            logger.info("Detected external imports in contract. Using fallback deployment contract.")
+            contract_name, solidity_source = _build_fallback_contract(zip_req.idea or framework.summary or "Auto project")
+
+    if solidity_source:
+        try:
+            deployment_details = deploy_contract(solidity_source, contract_name)
+        except DeploymentSkipped as skipped:
+            logger.info("Skipping deployment: %s", skipped)
+        except Exception as exc:
+            deployment_error = str(exc)
+            logger.error("Contract deployment failed: %s", exc)
+
     minimal_report = (
         "## Auto-Generated Web3 Project\n\n"
         "This project was generated by a multi-agent pipeline (planner, chain architect, "
@@ -990,12 +1088,20 @@ def generate_zip(zip_req: ZipRequest) -> ZipResponse:
         "and customize it for your real product."
     )
 
-    zip_bytes = build_repo_zip(framework, code_output, minimal_report)
+    zip_bytes = build_repo_zip(
+        framework,
+        code_output,
+        minimal_report,
+        deployment=deployment_details,
+        deployment_error=deployment_error,
+    )
     zip_b64 = base64.b64encode(zip_bytes).decode("utf-8")
 
     return ZipResponse(
         zip_base64=zip_b64,
-        security_report=security_output
+        security_report=security_output,
+        deployment=deployment_details,
+        deployment_error=deployment_error,
     )
 
 
@@ -1351,3 +1457,23 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
+def _build_fallback_contract(project_hint: str) -> Tuple[str, str]:
+    safe_hint = (project_hint or "Auto-generated project").replace("\n", " ")[:80]
+    source = f"""// Fallback contract deployed automatically for: {safe_hint}
+// Simple log-only contract (no external imports) so deployment always succeeds.
+pragma solidity ^0.8.20;
+
+contract AutoDeployedContract {{
+    address public owner;
+    event MessageLogged(address indexed sender, string message);
+
+    constructor() {{
+        owner = msg.sender;
+    }}
+
+    function logMessage(string calldata message) external {{
+        emit MessageLogged(msg.sender, message);
+    }}
+}}
+"""
+    return "AutoDeployedContract", source

@@ -128,16 +128,6 @@ const BuildSection = ({ agentResult, setAgentResult, onProjectSaved, session }) 
   };
 
   const mapTokenomics = (rawTokenomics) => {
-  
-  // Save project modal state
-  const [showSaveModal, setShowSaveModal] = useState(false);
-  const [projectName, setProjectName] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState('');
-
-  // ---------- Tokenomics helpers ----------
-
-  const normalizeTokenomics = (rawTokenomics) => {
     if (!rawTokenomics || typeof rawTokenomics !== 'object') {
       return null;
     }
@@ -162,70 +152,165 @@ const BuildSection = ({ agentResult, setAgentResult, onProjectSaved, session }) 
     }
 
     return {
-      tokenSymbol: (rawTokenomics.tokenSymbol || rawTokenomics.symbol || 'W3C').slice(0, 6).toUpperCase(),
-      totalSupply: Number(rawTokenomics.totalSupply) || 1_000_000_000,
+      tokenSymbol: (
+        rawTokenomics.tokenSymbol ||
+        rawTokenomics.token_symbol ||
+        rawTokenomics.symbol ||
+        'W3C'
+      )
+        .slice(0, 6)
+        .toUpperCase(),
       allocations,
-      healthSummary: rawTokenomics.healthSummary || rawTokenomics.summary,
+      healthSummary:
+        rawTokenomics.healthSummary || rawTokenomics.health_summary || rawTokenomics.summary,
     };
   };
 
-  const generateFallbackTokenomics = (stageValue, industryValue) => {
-    const normalizedStage = (stageValue || 'new').toLowerCase();
-    const industryText = (industryValue || 'ecosystem').toLowerCase();
-    const isExisting = normalizedStage === 'existing';
+  // ---------- Project detail loading ----------
 
-    const allocations = [
-      {
-        id: 'team',
-        label: 'Team',
-        percent: isExisting ? 20 : 26,
-        description: 'Core contributors & ops',
-      },
-      {
-        id: 'investors',
-        label: 'Investors',
-        percent: isExisting ? 25 : 15,
-        description: 'Strategic backers',
-      },
-      {
-        id: 'community',
-        label: 'Community',
-        percent: 35,
-        description: 'Growth, liquidity, and incentives',
-      },
-      {
-        id: 'treasury',
-        label: 'Treasury',
-        percent: 20,
-        description: 'Ecosystem runway',
-      },
-    ];
+  useEffect(() => {
+    let isMounted = true;
+    const loadProject = async () => {
+      if (!projectId) return;
+      if (!session?.access_token) {
+        setError('Please log in to view this project.');
+        return;
+      }
+      setError('');
+      setLoadingFramework(true);
+      try {
+        const res = await fetch(`${API_BASE}/api/projects/${projectId}`, {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || 'Failed to load project.');
+        }
+        const project = await res.json();
+        if (!isMounted) return;
 
-    if (industryText.includes('gaming') || industryText.includes('social')) {
-      allocations[2].percent += 5;
-      allocations[3].percent -= 5;
-    } else if (industryText.includes('finance') || industryText.includes('defi')) {
-      allocations[1].percent += 5;
-      allocations[2].percent -= 5;
-    }
+        setIdea(project.idea || '');
+        setStage(project.stage || 'new');
+        setIndustry(project.industry || '');
 
-    const totalPercent = allocations.reduce((sum, item) => sum + item.percent, 0);
-    if (totalPercent !== 100) {
-      const delta = 100 - totalPercent;
-      allocations[allocations.length - 1].percent += delta;
-    }
+        if (project.framework) {
+          setFramework(project.framework);
+          setHasGenerated(true);
+          if (setAgentResult) {
+            setAgentResult({
+              framework: project.framework,
+              tokenomics: project.tokenomics || null,
+            });
+          }
+        } else {
+          setFramework(null);
+          setHasGenerated(false);
+        }
 
-    const symbolSource = (industryValue || 'HELPER').replace(/[^a-z0-9]/gi, '').toUpperCase();
-
-    return {
-      tokenSymbol: (symbolSource || 'W3C').slice(0, 5),
-      totalSupply: 1_000_000_000,
-      allocations,
-      healthSummary: isExisting
-        ? 'Weighted toward strategic investors with steady community incentives.'
-        : 'Community-first distribution with ample runway for the treasury.',
+        const normalized = mapTokenomics(project.tokenomics);
+        setTokenomics(normalized || DEFAULT_TOKENOMICS);
+        setDeploymentInfo(null);
+        setDeploymentErrorMsg('');
+        setDeploymentStatus('idle');
+      } catch (err) {
+        if (isMounted) {
+          console.error('Failed to load project', err);
+          setError(err.message || 'Unable to load project.');
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingFramework(false);
+        }
+      }
     };
+
+    loadProject();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [projectId, session?.access_token]);
+
+  // Save project modal state
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [projectName, setProjectName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  const resolveUserId = () => {
+    return (
+      session?.user?.id ||
+      session?.user_id ||
+      session?.data?.user?.id ||
+      session?.user?.user?.id ||
+      null
+    );
   };
+
+  const handleSaveProject = async () => {
+    if (!projectName.trim()) {
+      setSaveError('Please enter a project name.');
+      return;
+    }
+    if (!framework) {
+      setSaveError('Generate a framework before saving.');
+      return;
+    }
+    const userId = resolveUserId();
+    if (!session?.access_token || !userId) {
+      setSaveError('Please log in to save your project.');
+      return;
+    }
+
+    setSaving(true);
+    setSaveError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/projects`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          name: projectName.trim(),
+          idea,
+          stage,
+          industry,
+          framework,
+          tokenomics,
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Failed to save project.');
+      }
+
+      const savedProject = await res.json();
+
+      if (typeof onProjectSaved === 'function') {
+        try {
+          onProjectSaved(savedProject);
+        } catch (err) {
+          console.warn('onProjectSaved callback threw:', err);
+        }
+      }
+
+      setShowSaveModal(false);
+      setProjectName('');
+      setSaveError('');
+    } catch (err) {
+      console.error('Failed to save project:', err);
+      setSaveError(err.message || 'Failed to save project.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ---------- Tokenomics helpers ----------
 
   // ---------- API handlers ----------
 
@@ -281,12 +366,8 @@ const BuildSection = ({ agentResult, setAgentResult, onProjectSaved, session }) 
       // framework is nested inside the multi-agent result
       setFramework(data.framework);
 
-      const normalized = normalizeTokenomics(data.tokenomics);
-      if (normalized) {
-        setTokenomics(normalized);
-      } else {
-        setTokenomics(generateFallbackTokenomics(stage, industry));
-      }
+      const normalized = mapTokenomics(data.tokenomics);
+      setTokenomics(normalized || DEFAULT_TOKENOMICS);
 
       setHasGenerated(true);
     } catch (err) {
@@ -345,7 +426,7 @@ const BuildSection = ({ agentResult, setAgentResult, onProjectSaved, session }) 
           idea,
           stage,
           industry: industry || null,
-          framework: framework, // Pass the already-generated framework
+          framework, // Pass the already-generated framework
         }),
         signal: controller.signal,
       });
@@ -357,14 +438,21 @@ const BuildSection = ({ agentResult, setAgentResult, onProjectSaved, session }) 
         throw new Error(errData.detail || 'Failed to generate zip file');
       }
 
-      const blob = await res.blob();
-
-      const disposition = res.headers.get('Content-Disposition') || '';
-      let filename = 'web3-starter.zip';
-      const match = disposition.match(/filename="([^"]+)"/);
-      if (match && match[1]) {
-        filename = match[1];
+      const data = await res.json();
+      const zipBase64 = data.zip_base64;
+      const filename = data.filename || 'web3-starter.zip';
+      if (!zipBase64) {
+        throw new Error('Server response did not include a ZIP payload.');
       }
+
+      const binaryString = window.atob(zipBase64);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i += 1) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      const blob = new Blob([bytes], { type: 'application/zip' });
 
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -389,6 +477,8 @@ const BuildSection = ({ agentResult, setAgentResult, onProjectSaved, session }) 
     } catch (err) {
       console.error(err);
       setError(err.message || 'Something went wrong while downloading.');
+      setDeploymentStatus('error');
+      setDeploymentErrorMsg(err.message || 'Something went wrong while downloading.');
     } finally {
       setLoadingZip(false);
     }

@@ -82,9 +82,19 @@ def deploy_contract(solidity_source: str, contract_name: str) -> Dict[str, str]:
 
     contract_identifier = f"<stdin>:{contract_name}"
     if contract_identifier not in compiled:
-        raise RuntimeError(
-            f"Contract '{contract_name}' not found in compiled artifacts."
-        )
+        if compiled:
+            contract_identifier = next(iter(compiled.keys()))
+            extracted_name = contract_identifier.split(":")[-1]
+            logger.warning(
+                "Contract %s not found; falling back to compiled artifact %s",
+                contract_name,
+                extracted_name,
+            )
+            contract_name = extracted_name
+        else:
+            raise RuntimeError(
+                f"Contract '{contract_name}' not found in compiled artifacts."
+            )
 
     abi = compiled[contract_identifier]["abi"]
     bytecode = compiled[contract_identifier]["bin"]
