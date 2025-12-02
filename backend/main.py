@@ -431,6 +431,28 @@ def _select_contract_for_deployment(code_plan: Dict[str, Any]) -> Tuple[Optional
     return None, None
 
 
+def _build_fallback_contract(project_hint: str) -> Tuple[str, str]:
+    safe_hint = (project_hint or "Auto-generated project").replace("\n", " ")[:80]
+    source = f"""// Fallback contract deployed automatically for: {safe_hint}
+// Simple log-only contract (no external imports) so deployment always succeeds.
+pragma solidity ^0.8.20;
+
+contract AutoDeployedContract {{
+    address public owner;
+    event MessageLogged(address indexed sender, string message);
+
+    constructor() {{
+        owner = msg.sender;
+    }}
+
+    function logMessage(string calldata message) external {{
+        emit MessageLogged(msg.sender, message);
+    }}
+}}
+"""
+    return "AutoDeployedContract", source
+
+
 def _inject_contract_address(file_content: str, deployment: Dict[str, str]) -> str:
     address = deployment.get("address")
     if not address:
@@ -883,7 +905,7 @@ def run_code_generation_pipeline(
     This is only called when the user clicks 'Download ZIP'.
     """
     shared: Dict[str, Any] = {
-        "framework": framework.dict()
+        "framework": framework.model_dump()
     }
 
     # Code Generator Agent
@@ -1308,7 +1330,7 @@ def create_project(
         "idea": project_data.idea,
         "stage": project_data.stage,
         "industry": project_data.industry,
-        "framework": project_data.framework.dict(),
+        "framework": project_data.framework.model_dump(),
         "tokenomics": project_data.tokenomics,
         "created_at": created_at,
     }
@@ -1467,23 +1489,3 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
-def _build_fallback_contract(project_hint: str) -> Tuple[str, str]:
-    safe_hint = (project_hint or "Auto-generated project").replace("\n", " ")[:80]
-    source = f"""// Fallback contract deployed automatically for: {safe_hint}
-// Simple log-only contract (no external imports) so deployment always succeeds.
-pragma solidity ^0.8.20;
-
-contract AutoDeployedContract {{
-    address public owner;
-    event MessageLogged(address indexed sender, string message);
-
-    constructor() {{
-        owner = msg.sender;
-    }}
-
-    function logMessage(string calldata message) external {{
-        emit MessageLogged(msg.sender, message);
-    }}
-}}
-"""
-    return "AutoDeployedContract", source
