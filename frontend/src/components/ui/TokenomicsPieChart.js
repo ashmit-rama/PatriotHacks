@@ -192,7 +192,7 @@ export const TokenomicsLegend = ({
   if (!data.length) return null;
 
   return (
-    <div className="flex flex-col gap-3 w-full">
+    <div className="flex flex-col w-full" style={{ gap: '12px' }}>
       {data.map((item, index) => {
         const color = item.color || defaultColors[index % defaultColors.length];
         const isHovered = hoveredIndex === index;
@@ -200,44 +200,53 @@ export const TokenomicsLegend = ({
         return (
           <div
             key={`legend-${item.id || index}`}
-            className={`
-              flex items-center gap-3 py-2.5 px-3 rounded-lg transition-all duration-200 cursor-pointer
-              ${isHovered ? 'bg-slate-800/40' : 'hover:bg-slate-800/20'}
-            `}
+            className="token-row flex items-center justify-between gap-4 transition-all duration-200 cursor-pointer w-full"
             style={{
+              padding: '8px 12px',
+              borderRadius: '6px',
+              marginBottom: '12px',
               opacity: isHovered ? 1 : hoveredIndex !== null && hoveredIndex !== index ? 0.6 : 1,
-              border: `2px solid ${isHovered ? color : `${color}60`}`,
+              transform: isHovered ? 'scale(1.03)' : 'scale(1)',
+              border: `1.5px solid ${isHovered ? color : `${color}60`}`,
+              backgroundColor: isHovered 
+                ? `${color}15` 
+                : 'rgba(15, 23, 42, 0.4)',
+              boxShadow: isHovered
+                ? `0 0 0 1px ${color}40, 0 0 16px ${color}50, 0 2px 6px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)`
+                : `0 0 0 1px ${color}30, 0 0 8px ${color}30, 0 1px 3px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05)`,
             }}
             onMouseEnter={() => onItemHover?.(index)}
             onMouseLeave={onItemLeave}
           >
-            {/* Color indicator */}
+            {/* Left: Label */}
             <div
-              className="w-3.5 h-3.5 rounded-full flex-shrink-0 transition-transform duration-200"
+              className="token-label text-sm font-semibold flex-1 min-w-0"
               style={{
-                backgroundColor: color,
-                transform: isHovered ? 'scale(1.15)' : 'scale(1)',
+                color: isHovered ? '#FFFFFF' : 'rgb(226, 232, 240)',
+                textShadow: isHovered ? `0 0 6px ${color}60` : 'none',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
               }}
-            />
-            
-            {/* Label and percentage with increased spacing */}
-            <div className="flex items-center justify-between flex-1 min-w-0 gap-4">
-              <span
-                className={`
-                  text-sm font-medium truncate flex-1 min-w-0
-                  ${isHovered ? 'text-slate-100' : 'text-slate-200'}
-                `}
-              >
-                {item.label}
-              </span>
-              <span
-                className={`
-                  text-sm font-semibold tabular-nums flex-shrink-0 text-right
-                  ${isHovered ? 'text-slate-100' : 'text-slate-300'}
-                `}
-              >
-                {item.value}%
-              </span>
+            >
+              {item.label}
+            </div>
+
+            {/* Right: Percentage */}
+            <div
+              className="token-value text-sm font-bold tabular-nums flex-shrink-0"
+              style={{
+                color: isHovered ? color : `${color}CC`,
+                textShadow: isHovered 
+                  ? `0 0 10px ${color}80, 0 1px 2px rgba(0, 0, 0, 0.3)`
+                  : `0 1px 2px rgba(0, 0, 0, 0.5)`,
+                fontWeight: 700,
+                minWidth: '3rem',
+                textAlign: 'right',
+                paddingRight: '4px',
+              }}
+            >
+              {item.value}%
             </div>
           </div>
         );
